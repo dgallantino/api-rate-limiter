@@ -2,7 +2,7 @@
 
 A standalone rate-limiting/quota service that businesses drop into their existing API — as a middleware call or a reverse proxy — without changing their API contract.
 
-Implementation has not started. Full MVP definition: [docs/mvp.md](docs/mvp.md).
+Full MVP definition: [docs/MVP.md](docs/MVP.md). Week 1 ships the **Check** binary only.
 
 ## Who it's for
 
@@ -11,6 +11,32 @@ A small-to-mid SaaS team that has an API, is starting to hit abuse/overload prob
 ## MVP goal
 
 Prove one thing convincingly: **atomic, correct, low-latency rate limiting that survives concurrent load and degrades predictably when its dependency (Redis) fails.** Everything else in scope exists to make that demonstrable and integrable.
+
+## Run Check (CORE)
+
+Needs `protoc`, `protoc-gen-go`, and `protoc-gen-go-grpc` on `PATH`. Generated Go is local (`make proto`); it is not committed.
+
+```bash
+# Redis via Podman only — do not use Docker or a host redis package
+make redis
+
+# another terminal
+make proto
+go run ./cmd/check -config configs/check.example.yaml
+```
+
+`Check` is h2c (plaintext HTTP/2) on `:50051` by default:
+
+```bash
+grpcurl -plaintext -d '{"key":"demo","cost":1}' 127.0.0.1:50051 check.v1.Checker/Check
+```
+
+Manual tests (no CI):
+
+```bash
+make test
+make test-race
+```
 
 ## Known spec
 
