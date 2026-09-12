@@ -1,6 +1,6 @@
 PROTO := proto/check/v1/check.proto
 MODULE := github.com/dgallantino/api-rate-limiter
-
+CONTAINER := $(shell command -v podman || command -v docker)
 .PHONY: proto test test-race run redis
 
 proto:
@@ -21,4 +21,4 @@ run: proto
 
 # Real Redis for a manual cmd/check run. Tests use miniredis (no container).
 redis:
-	podman run --rm -p 6379:6379 --name rl-redis redis:7-alpine
+	$(CONTAINER) run --rm -p 6379:6379 --name rl-redis redis:7-alpine

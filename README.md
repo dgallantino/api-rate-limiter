@@ -17,7 +17,6 @@ Prove one thing convincingly: **atomic, correct, low-latency rate limiting that 
 Needs `protoc`, `protoc-gen-go`, and `protoc-gen-go-grpc` on `PATH`. Generated Go is local (`make proto`); it is not committed.
 
 ```bash
-# Redis via Podman only — do not use Docker or a host redis package
 make redis
 
 # another terminal
