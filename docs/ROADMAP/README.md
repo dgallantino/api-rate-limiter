@@ -1,10 +1,10 @@
 # ROADMAP
 
-Sequencing for the MVP. Full feature scope lives in [../mvp.md](../mvp.md).
+Sequencing for the MVP. Full feature scope lives in [../MVP.md](../MVP.md).
 
 ## Week 1
 
-Core engine + gRPC check API + concurrency tests.
+[01-MILESTONE-CORE](01-MILESTONE-CORE.md) — core engine + gRPC check API + concurrency tests.
 
 ## Week 2
 
