@@ -1,0 +1,21 @@
+listen_addr: ":50051"
+redis:
+  addr: "127.0.0.1:6379"
+default:
+  limit: 100
+  window: 1m
+  fail: closed
+keys:
+  vip-client:
+    limit: 1000
+    window: 1m
+    fail: closed
+prefixes:
+  "pro:":
+    limit: 500
+    window: 1m
+    fail: closed
+  "free:":
+    limit: 20
+    window: 1m
+    fail: open
