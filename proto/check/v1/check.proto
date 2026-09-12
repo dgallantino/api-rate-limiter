@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package check.v1;
+
+option go_package = "github.com/dgallantino/api-rate-limiter/internal/gen/check/v1;checkv1";
+
+service Checker {
+  rpc Check(CheckRequest) returns (CheckResponse);
+}
+
+message CheckRequest {
+  string key = 1;
+  int64 cost = 2;
+}
+
+message CheckResponse {
+  bool allowed = 1;
+  int64 remaining = 2;
+  int64 retry_after_ms = 3;
+}

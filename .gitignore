@@ -15,6 +15,9 @@ coverage.html
 coverage.txt
 coverage.out
 
+# Generated protobuf (make proto)
+internal/gen/
+
 # Go
 vendor/
 
