@@ -17,6 +17,14 @@ coverage.out
 
 # Generated protobuf (make proto)
 internal/gen/
+python/gen/
+
+# Python
+python/.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
 
 # Go
 vendor/
