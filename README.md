@@ -35,7 +35,10 @@ Manual tests (no CI):
 ```bash
 make test
 make test-race
+make test-python
 ```
+
+Python tests need `grpc_tools` (`python3 -m venv python/.venv && python/.venv/bin/pip install -e 'python/[dev]'`).
 
 ## Known spec
 
