@@ -2,7 +2,7 @@
 
 A standalone rate-limiting/quota service that businesses drop into their existing API — as a middleware call or a reverse proxy — without changing their API contract.
 
-Full MVP definition: [docs/MVP.md](docs/MVP.md). Week 1 ships the **Check** binary only.
+Full MVP definition: [docs/MVP.md](docs/MVP.md). Week 1 ships the **Check** binary. Week 2 adds HTTP adapters and a demo origin.
 
 ## Who it's for
 
@@ -39,6 +39,28 @@ make test-python
 ```
 
 Python tests need `grpc_tools` (`python3 -m venv python/.venv && python/.venv/bin/pip install -e 'python/[dev]'`).
+
+## Run adapters
+
+Needs the Check server above. Python gen uses `grpc_tools` (`python3 -m venv python/.venv && python/.venv/bin/pip install -e 'python/[dev]'`).
+
+Proxy in front of the demo origin:
+
+```bash
+make run-origin
+# another terminal
+make run-proxy
+curl -i -H 'X-API-Key: free:demo' http://127.0.0.1:8080/work
+```
+
+Same origin wrapped by Python ASGI (no proxy):
+
+```bash
+make run-origin-limited
+curl -i -H 'X-API-Key: free:demo' http://127.0.0.1:8000/work
+```
+
+`free:…` / `pro:…` keys match [configs/check.example.yaml](configs/check.example.yaml). Denied requests return HTTP 429 and do not hit origin.
 
 ## Known spec
 

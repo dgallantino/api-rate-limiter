@@ -8,7 +8,7 @@ Sequencing for the MVP. Full feature scope lives in [../MVP.md](../MVP.md).
 
 ## Week 2
 
-Middleware adapters (Python, Go) + reverse proxy mode + demo origin API.
+[02-MILESTONE-ADAPTERS](02-MILESTONE-ADAPTERS.md) — middleware adapters (Python, Go) + reverse proxy mode + demo origin API.
 
 ## Week 3
 

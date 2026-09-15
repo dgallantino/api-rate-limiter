@@ -10,5 +10,7 @@ Notes for coding agents working in this repo.
 
 ## Layout
 
-- `internal/` — private engine and service code (later).
-- `pkg/` — exported middleware that calls the engine (later). No packages yet.
+- `internal/` — private engine, Check service, and proxy YAML config.
+- `pkg/httplimit` — exported Go `net/http` middleware that is a gRPC client of Check (not an in-process `internal/engine` import).
+- `python/` — ASGI/WSGI adapters; generated stubs in gitignored `python/gen/`.
+- `demo/origin` — FastAPI origin with no limiter of its own.
