@@ -1,0 +1,6 @@
+listen_addr: ":8080"
+origin_url: "http://127.0.0.1:8000"
+check_addr: "127.0.0.1:50051"
+key: "header:X-API-Key"
+cost: 1
+fail: closed
