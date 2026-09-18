@@ -1,18 +1,24 @@
 package httplimit
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
 	checkv1 "github.com/dgallantino/api-rate-limiter/internal/gen/check/v1"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
 type CostFunc func(*http.Request) int64
 
+type CheckClient interface {
+	Check(ctx context.Context, in *checkv1.CheckRequest, opts ...grpc.CallOption) (*checkv1.CheckResponse, error)
+}
+
 type Options struct {
-	Client   checkv1.CheckerClient
+	Client   CheckClient
 	KeyFunc  KeyFunc
 	Cost     int64
 	CostFunc CostFunc

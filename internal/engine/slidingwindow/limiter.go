@@ -34,9 +34,9 @@ func (l *Limiter) Check(ctx context.Context, key string, cost int64, policy conf
 		return res, nil
 	}
 	if policy.Fail == config.FailOpen {
-		return engine.Result{Allowed: true}, nil
+		return engine.Result{Allowed: true, StoreFailed: true}, nil
 	}
-	return engine.Result{}, nil
+	return engine.Result{StoreFailed: true}, nil
 }
 
 func (l *Limiter) eval(ctx context.Context, key string, cost int64, policy config.Policy, now time.Time) (engine.Result, error) {

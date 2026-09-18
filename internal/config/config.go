@@ -18,6 +18,13 @@ const (
 	FailOpen
 )
 
+func (f FailMode) String() string {
+	if f == FailOpen {
+		return "open"
+	}
+	return "closed"
+}
+
 type Redis struct {
 	Addr string `json:"addr" yaml:"addr"`
 }

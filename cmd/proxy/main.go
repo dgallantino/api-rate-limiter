@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 
-	checkv1 "github.com/dgallantino/api-rate-limiter/internal/gen/check/v1"
 	"github.com/dgallantino/api-rate-limiter/internal/proxyconfig"
 	"github.com/dgallantino/api-rate-limiter/pkg/httplimit"
 )
@@ -31,7 +30,7 @@ func main() {
 	log.Fatal(http.ListenAndServe(cfg.ListenAddr, h))
 }
 
-func wrapOrigin(cfg *proxyconfig.Config, client checkv1.CheckerClient) http.Handler {
+func wrapOrigin(cfg *proxyconfig.Config, client httplimit.CheckClient) http.Handler {
 	rp := httputil.NewSingleHostReverseProxy(cfg.OriginURL)
 	return httplimit.Middleware(httplimit.Options{
 		Client:  client,

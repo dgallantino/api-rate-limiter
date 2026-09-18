@@ -6,6 +6,7 @@ option go_package = "github.com/dgallantino/api-rate-limiter/internal/gen/check/
 
 service Checker {
   rpc Check(CheckRequest) returns (CheckResponse);
+  rpc Stats(StatsRequest) returns (StatsSnapshot);
 }
 
 message CheckRequest {
@@ -17,4 +18,22 @@ message CheckResponse {
   bool allowed = 1;
   int64 remaining = 2;
   int64 retry_after_ms = 3;
+}
+
+message StatsRequest {}
+
+message KeyStat {
+  string key = 1;
+  int64 used = 2;
+  int64 remaining = 3;
+  int64 limit = 4;
+  string fail = 5;
+}
+
+message StatsSnapshot {
+  int64 allowed = 1;
+  int64 blocked = 2;
+  int64 rps = 3;
+  bool redis_up = 4;
+  repeated KeyStat keys = 5;
 }

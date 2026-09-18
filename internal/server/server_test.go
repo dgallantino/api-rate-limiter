@@ -19,7 +19,7 @@ func (s stub) Check(context.Context, string, int64, config.Policy) (engine.Resul
 }
 
 func TestCheckInvalidArgument(t *testing.T) {
-	s := New(&config.Config{Default: config.Policy{Limit: 10, Window: time.Minute}}, stub{})
+	s := New(&config.Config{Default: config.Policy{Limit: 10, Window: time.Minute}}, stub{}, nil)
 	ctx := context.Background()
 	_, err := s.Check(ctx, &checkv1.CheckRequest{Cost: 1})
 	if status.Code(err) != codes.InvalidArgument {
