@@ -2,7 +2,7 @@ PROTO := proto/check/v1/check.proto
 MODULE := github.com/dgallantino/api-rate-limiter
 CONTAINER := $(shell command -v podman || command -v docker)
 PY := $(shell test -x python/.venv/bin/python && echo $(abspath python/.venv/bin/python) || echo python3)
-.PHONY: proto proto-go proto-python test test-race test-python run run-proxy run-origin run-origin-limited redis
+.PHONY: proto proto-go proto-python test test-race test-python run run-proxy run-origin run-origin-limited run-dashboard redis
 
 proto: proto-go proto-python
 
@@ -42,6 +42,9 @@ run-origin:
 
 run-origin-limited:
 	PYTHONPATH=python/src:python/gen python3 -m uvicorn limited:app --app-dir demo/origin --host 127.0.0.1 --port 8000
+
+run-dashboard: proto-go
+	go run ./cmd/dashboard -config configs/dashboard.example.yaml
 
 # Real Redis for a manual cmd/check run. Tests use miniredis (no container).
 redis:

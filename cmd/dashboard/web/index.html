@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rate limit stats</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { font: 14px/1.4 system-ui, sans-serif; margin: 1.5rem; background: #111; color: #eee; }
+    h1 { font-size: 1.2rem; font-weight: 600; margin: 0 0 1rem; }
+    .row { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem; }
+    .card { background: #1b1b1b; border: 1px solid #333; border-radius: 6px; padding: .75rem 1rem; min-width: 8rem; }
+    .card b { display: block; font-size: 1.4rem; }
+    .ok { color: #6d6; }
+    .bad { color: #f66; }
+    .banner { padding: .75rem 1rem; border-radius: 6px; margin-bottom: 1rem; }
+    .banner.down { background: #3a1515; border: 1px solid #a33; }
+    .banner.warn { background: #3a2a10; border: 1px solid #a83; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid #333; }
+    th { color: #aaa; font-weight: 500; }
+    .muted { color: #888; }
+  </style>
+</head>
+<body>
+  <h1>Rate limit stats</h1>
+  <div id="banner" class="banner" hidden></div>
+  <div class="row">
+    <div class="card">Redis <b id="redis">—</b></div>
+    <div class="card">RPS <b id="rps">—</b></div>
+    <div class="card">Allowed <b id="allowed">—</b></div>
+    <div class="card">Blocked <b id="blocked">—</b></div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Key</th>
+        <th>Used</th>
+        <th>Remaining</th>
+        <th>Limit</th>
+        <th>Fail</th>
+        <th>If Redis down</th>
+      </tr>
+    </thead>
+    <tbody id="keys"></tbody>
+  </table>
+  <script>
+    const banner = document.getElementById("banner");
+    const redisEl = document.getElementById("redis");
+    const rpsEl = document.getElementById("rps");
+    const allowedEl = document.getElementById("allowed");
+    const blockedEl = document.getElementById("blocked");
+    const keysEl = document.getElementById("keys");
+
+    function failAction(fail) {
+      return fail === "open" ? "still serving" : "denying";
+    }
+
+    function render(s) {
+      banner.hidden = true;
+      redisEl.textContent = s.redis_up ? "up" : "DOWN";
+      redisEl.className = s.redis_up ? "ok" : "bad";
+      rpsEl.textContent = s.rps;
+      allowedEl.textContent = s.allowed;
+      blockedEl.textContent = s.blocked;
+      if (!s.redis_up) {
+        banner.hidden = false;
+        banner.className = "banner down";
+        banner.textContent = "Redis is down. Fail-open keys still serve; fail-closed keys deny.";
+      }
+      const keys = s.keys || [];
+      keysEl.replaceChildren();
+      for (const k of keys) {
+        const tr = document.createElement("tr");
+        const action = failAction(k.fail);
+        tr.innerHTML = "<td></td><td></td><td></td><td></td><td></td><td></td>";
+        const tds = tr.children;
+        tds[0].textContent = k.key;
+        tds[1].textContent = k.used;
+        tds[2].textContent = k.remaining;
+        tds[3].textContent = k.limit;
+        tds[4].textContent = k.fail;
+        tds[5].textContent = action;
+        tds[5].className = s.redis_up ? "muted" : (k.fail === "open" ? "ok" : "bad");
+        keysEl.appendChild(tr);
+      }
+    }
+
+    function showUnreachable() {
+      banner.hidden = false;
+      banner.className = "banner warn";
+      banner.textContent = "check unreachable";
+      redisEl.textContent = "—";
+      redisEl.className = "";
+    }
+
+    async function tick() {
+      try {
+        const r = await fetch("/stats");
+        const s = await r.json();
+        if (!r.ok) {
+          showUnreachable();
+          return;
+        }
+        render(s);
+      } catch (e) {
+        showUnreachable();
+      }
+    }
+    tick();
+    setInterval(tick, 1000);
+  </script>
+</body>
+</html>
