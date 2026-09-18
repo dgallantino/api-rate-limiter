@@ -122,3 +122,9 @@ func TestLoadValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestFailModeString(t *testing.T) {
+	if FailOpen.String() != "open" || FailClosed.String() != "closed" {
+		t.Fatalf("open=%q closed=%q", FailOpen.String(), FailClosed.String())
+	}
+}

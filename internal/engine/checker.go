@@ -10,6 +10,7 @@ type Result struct {
 	Allowed      bool
 	Remaining    int64
 	RetryAfterMs int64
+	StoreFailed  bool
 }
 
 type Checker interface {

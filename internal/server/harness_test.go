@@ -32,7 +32,7 @@ func startTestServer(t *testing.T, cfg *config.Config) *testEnv {
 		t.Fatal(err)
 	}
 	gs := grpc.NewServer()
-	checkv1.RegisterCheckerServer(gs, New(cfg, slidingwindow.New(rdb)))
+	checkv1.RegisterCheckerServer(gs, New(cfg, slidingwindow.New(rdb), nil))
 	go gs.Serve(lis)
 	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {

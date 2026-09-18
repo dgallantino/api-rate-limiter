@@ -94,11 +94,11 @@ func TestFailModes(t *testing.T) {
 	ctx := context.Background()
 	mr.Close()
 	r, err := l.Check(ctx, "k", 1, pol(2, time.Minute, config.FailOpen))
-	if err != nil || !r.Allowed || r.Remaining != 0 || r.RetryAfterMs != 0 {
+	if err != nil || !r.Allowed || r.Remaining != 0 || r.RetryAfterMs != 0 || !r.StoreFailed {
 		t.Fatalf("open: %+v %v", r, err)
 	}
 	r, err = l.Check(ctx, "k", 1, pol(2, time.Minute, config.FailClosed))
-	if err != nil || r.Allowed || r.Remaining != 0 || r.RetryAfterMs != 0 {
+	if err != nil || r.Allowed || r.Remaining != 0 || r.RetryAfterMs != 0 || !r.StoreFailed {
 		t.Fatalf("closed: %+v %v", r, err)
 	}
 }
