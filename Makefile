@@ -1,8 +1,9 @@
 PROTO := proto/check/v1/check.proto
 MODULE := github.com/dgallantino/api-rate-limiter
 CONTAINER := $(shell command -v podman || command -v docker)
+REDIS_NAME := rl-redis
 PY := $(shell test -x python/.venv/bin/python && echo $(abspath python/.venv/bin/python) || echo python3)
-.PHONY: proto proto-go proto-python test test-race test-python run run-proxy run-origin run-origin-limited redis
+.PHONY: proto proto-go proto-python test test-race test-python run run-proxy run-origin run-origin-limited run-dashboard loadtest redis redis-stop redis-start
 
 proto: proto-go proto-python
 
@@ -43,6 +44,18 @@ run-origin:
 run-origin-limited:
 	PYTHONPATH=python/src:python/gen python3 -m uvicorn limited:app --app-dir demo/origin --host 127.0.0.1 --port 8000
 
+run-dashboard: proto-go
+	go run ./cmd/dashboard -config configs/dashboard.example.yaml
+
+loadtest:
+	go run ./cmd/loadtest
+
 # Real Redis for a manual cmd/check run. Tests use miniredis (no container).
 redis:
-	$(CONTAINER) run --rm -p 6379:6379 --name rl-redis redis:7-alpine
+	$(CONTAINER) start $(REDIS_NAME) 2>/dev/null || $(CONTAINER) run -d -p 6379:6379 --name $(REDIS_NAME) redis:7-alpine
+
+redis-stop:
+	$(CONTAINER) stop $(REDIS_NAME)
+
+redis-start:
+	$(CONTAINER) start $(REDIS_NAME)

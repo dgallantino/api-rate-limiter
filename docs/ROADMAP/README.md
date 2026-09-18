@@ -12,7 +12,7 @@ Sequencing for the MVP. Full feature scope lives in [../MVP.md](../MVP.md).
 
 ## Week 3
 
-Dashboard + load-test tooling + fail-open/closed demo polish.
+[03-MILESTONE-DASHBOARD](03-MILESTONE-DASHBOARD.md) — dashboard + load-test tooling + fail-open/closed demo polish.
 
 ## Week 4
 
