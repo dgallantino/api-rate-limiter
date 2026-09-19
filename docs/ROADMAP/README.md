@@ -16,4 +16,4 @@ Sequencing for the MVP. Full feature scope lives in [../MVP.md](../MVP.md).
 
 ## Week 4
 
-Docs, Docker Compose, metrics/logging, demo video, README storytelling.
+[04-MILESTONE-PACKAGING](04-MILESTONE-PACKAGING.md) — Compose + JSON logs + Prometheus + README storytelling.
