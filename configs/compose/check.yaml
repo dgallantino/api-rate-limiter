@@ -1,0 +1,22 @@
+listen_addr: ":50051"
+metrics_addr: ":2112"
+redis:
+  addr: "redis:6379"
+default:
+  limit: 100
+  window: 1m
+  fail: closed
+keys:
+  vip-client:
+    limit: 1000
+    window: 1m
+    fail: closed
+prefixes:
+  "pro:":
+    limit: 500
+    window: 1m
+    fail: closed
+  "free:":
+    limit: 20
+    window: 1m
+    fail: open

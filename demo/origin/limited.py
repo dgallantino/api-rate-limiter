@@ -26,6 +26,9 @@ class Limited:
 
             await origin(scope, hook, send)
             return
+        if scope["type"] == "http" and scope.get("path") == "/health":
+            await origin(scope, receive, send)
+            return
         await self.app(scope, receive, send)
 
 
