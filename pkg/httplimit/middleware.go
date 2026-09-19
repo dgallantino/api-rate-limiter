@@ -18,11 +18,13 @@ type CheckClient interface {
 }
 
 type Options struct {
-	Client   CheckClient
-	KeyFunc  KeyFunc
-	Cost     int64
-	CostFunc CostFunc
-	Fail     FailMode
+	Client      CheckClient
+	KeyFunc     KeyFunc
+	Cost        int64
+	CostFunc    CostFunc
+	Fail        FailMode
+	OnDeny      func(key string, remaining, retryAfterMs int64)
+	OnCheckDown func(key string, err error)
 }
 
 func Middleware(opts Options) func(http.Handler) http.Handler {
@@ -50,6 +52,9 @@ func Middleware(opts Options) func(http.Handler) http.Handler {
 					writeBadRequest(w)
 					return
 				}
+				if opts.OnCheckDown != nil {
+					opts.OnCheckDown(key, err)
+				}
 				if opts.Fail == FailOpen {
 					next.ServeHTTP(w, r)
 					return
@@ -58,6 +63,9 @@ func Middleware(opts Options) func(http.Handler) http.Handler {
 				return
 			}
 			if !res.Allowed {
+				if opts.OnDeny != nil {
+					opts.OnDeny(key, res.Remaining, res.RetryAfterMs)
+				}
 				WriteDeny(w, res.Remaining, res.RetryAfterMs)
 				return
 			}

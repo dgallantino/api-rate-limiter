@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/dgallantino/api-rate-limiter/internal/config"
 	"github.com/dgallantino/api-rate-limiter/internal/engine"
@@ -16,6 +17,7 @@ type Server struct {
 	cfg     *config.Config
 	checker engine.Checker
 	rec     *stats.Recorder
+	log     *slog.Logger
 }
 
 func New(cfg *config.Config, checker engine.Checker, rec *stats.Recorder) *Server {
@@ -23,6 +25,11 @@ func New(cfg *config.Config, checker engine.Checker, rec *stats.Recorder) *Serve
 		rec = stats.New()
 	}
 	return &Server{cfg: cfg, checker: checker, rec: rec}
+}
+
+func (s *Server) WithLogger(log *slog.Logger) *Server {
+	s.log = log
+	return s
 }
 
 func (s *Server) Check(ctx context.Context, req *checkv1.CheckRequest) (*checkv1.CheckResponse, error) {
@@ -38,6 +45,14 @@ func (s *Server) Check(ctx context.Context, req *checkv1.CheckRequest) (*checkv1
 		return nil, status.Errorf(codes.Internal, "check: %v", err)
 	}
 	s.rec.Observe(req.GetKey(), res.Allowed, res.Remaining, policy.Limit, policy.Fail.String(), res.StoreFailed)
+	if !res.Allowed && s.log != nil {
+		s.log.Info("deny",
+			"key", req.GetKey(),
+			"remaining", res.Remaining,
+			"retry_after_ms", res.RetryAfterMs,
+			"fail", policy.Fail.String(),
+		)
+	}
 	return &checkv1.CheckResponse{
 		Allowed:      res.Allowed,
 		Remaining:    res.Remaining,

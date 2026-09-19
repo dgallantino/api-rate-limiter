@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 func TestObserveCountsAndKeys(t *testing.T) {
@@ -69,6 +72,47 @@ func TestRPSLastCompletedBucket(t *testing.T) {
 	now = now.Add(time.Second)
 	if rec.Snapshot().RPS != 2 {
 		t.Fatalf("rps=%d want 2", rec.Snapshot().RPS)
+	}
+}
+
+func TestPrometheusObserveAndRedisGauge(t *testing.T) {
+	rec := New()
+	reg := prometheus.NewRegistry()
+	if err := rec.Register(reg); err != nil {
+		t.Fatal(err)
+	}
+	rec.Observe("a", true, 1, 10, "closed", false)
+	rec.Observe("b", false, 0, 10, "closed", false)
+	rec.Observe("c", true, 0, 10, "open", true)
+	if got := testutil.ToFloat64(rec.reqTotal); got != 3 {
+		t.Fatalf("requests_total=%v", got)
+	}
+	if got := testutil.ToFloat64(rec.blockedTotal); got != 1 {
+		t.Fatalf("blocked_total=%v", got)
+	}
+	if got := testutil.ToFloat64(rec.redisGauge); got != 0 {
+		t.Fatalf("redis_up=%v", got)
+	}
+	mfs, err := reg.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mfs) != 3 {
+		t.Fatalf("families=%d", len(mfs))
+	}
+}
+
+func TestOnRedisChangeTransitionsOnly(t *testing.T) {
+	rec := New()
+	var flips []bool
+	rec.SetOnRedisChange(func(up bool) { flips = append(flips, up) })
+	rec.SetRedisUp(true)
+	rec.SetRedisUp(true)
+	rec.SetRedisUp(false)
+	rec.SetRedisUp(false)
+	rec.SetRedisUp(true)
+	if len(flips) != 2 || flips[0] || !flips[1] {
+		t.Fatalf("flips=%v", flips)
 	}
 }
 

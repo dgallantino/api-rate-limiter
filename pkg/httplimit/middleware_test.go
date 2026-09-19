@@ -187,6 +187,51 @@ func TestParseFail(t *testing.T) {
 	}
 }
 
+func TestOnDenyCallback(t *testing.T) {
+	var gotKey string
+	var gotRemaining, gotRetry int64
+	var called bool
+	h := wrap(Options{
+		Client: stubClient{func(context.Context, *checkv1.CheckRequest) (*checkv1.CheckResponse, error) {
+			return &checkv1.CheckResponse{Allowed: false, Remaining: 0, RetryAfterMs: 1500}, nil
+		}},
+		Cost: 1,
+		OnDeny: func(key string, remaining, retryAfterMs int64) {
+			gotKey, gotRemaining, gotRetry = key, remaining, retryAfterMs
+		},
+	}, &called)
+	rec := hit(t, h, http.Header{"X-Api-Key": []string{"free:demo"}})
+	if rec.Code != http.StatusTooManyRequests || called {
+		t.Fatalf("deny: code=%d called=%v", rec.Code, called)
+	}
+	if gotKey != "free:demo" || gotRemaining != 0 || gotRetry != 1500 {
+		t.Fatalf("onDeny key=%q remaining=%d retry=%d", gotKey, gotRemaining, gotRetry)
+	}
+}
+
+func TestOnCheckDownCallback(t *testing.T) {
+	var gotKey string
+	var gotErr error
+	var called bool
+	h := wrap(Options{
+		Client: stubClient{func(context.Context, *checkv1.CheckRequest) (*checkv1.CheckResponse, error) {
+			return nil, status.Error(codes.Unavailable, "check down")
+		}},
+		Cost: 1,
+		Fail: FailOpen,
+		OnCheckDown: func(key string, err error) {
+			gotKey, gotErr = key, err
+		},
+	}, &called)
+	rec := hit(t, h, http.Header{"X-Api-Key": []string{"k"}})
+	if rec.Code != http.StatusNoContent || !called {
+		t.Fatalf("fail-open: code=%d called=%v", rec.Code, called)
+	}
+	if gotKey != "k" || gotErr == nil {
+		t.Fatalf("onCheckDown key=%q err=%v", gotKey, gotErr)
+	}
+}
+
 func TestCostFuncPeek(t *testing.T) {
 	var got int64 = -1
 	var called bool

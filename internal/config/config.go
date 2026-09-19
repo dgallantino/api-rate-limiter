@@ -36,11 +36,12 @@ type Policy struct {
 }
 
 type Config struct {
-	ListenAddr string
-	Redis      Redis
-	Default    Policy
-	keys       map[string]Policy
-	prefixes   []prefixRule
+	ListenAddr  string
+	MetricsAddr string
+	Redis       Redis
+	Default     Policy
+	keys        map[string]Policy
+	prefixes    []prefixRule
 }
 
 type prefixRule struct {
@@ -49,11 +50,12 @@ type prefixRule struct {
 }
 
 type file struct {
-	ListenAddr string                `json:"listen_addr" yaml:"listen_addr"`
-	Redis      Redis                 `json:"redis" yaml:"redis"`
-	Default    *policyFile           `json:"default" yaml:"default"`
-	Keys       map[string]policyFile `json:"keys" yaml:"keys"`
-	Prefixes   map[string]policyFile `json:"prefixes" yaml:"prefixes"`
+	ListenAddr  string                `json:"listen_addr" yaml:"listen_addr"`
+	MetricsAddr string                `json:"metrics_addr" yaml:"metrics_addr"`
+	Redis       Redis                 `json:"redis" yaml:"redis"`
+	Default     *policyFile           `json:"default" yaml:"default"`
+	Keys        map[string]policyFile `json:"keys" yaml:"keys"`
+	Prefixes    map[string]policyFile `json:"prefixes" yaml:"prefixes"`
 }
 
 type policyFile struct {
@@ -137,11 +139,12 @@ func (f file) toConfig() (*Config, error) {
 		prefixes = append(prefixes, prefixRule{prefix: pref, policy: pol})
 	}
 	return &Config{
-		ListenAddr: f.ListenAddr,
-		Redis:      f.Redis,
-		Default:    def,
-		keys:       keys,
-		prefixes:   prefixes,
+		ListenAddr:  f.ListenAddr,
+		MetricsAddr: strings.TrimSpace(f.MetricsAddr),
+		Redis:       f.Redis,
+		Default:     def,
+		keys:        keys,
+		prefixes:    prefixes,
 	}, nil
 }
 
