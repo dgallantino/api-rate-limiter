@@ -1,4 +1,5 @@
 listen_addr: ":50051"
+metrics_addr: ":2112"
 redis:
   addr: "127.0.0.1:6379"
 default:

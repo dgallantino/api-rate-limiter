@@ -5,6 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const MaxKeys = 50
@@ -31,6 +33,12 @@ type Recorder struct {
 	redisUp atomic.Bool
 	now     func() time.Time
 
+	onRedisChange func(up bool)
+
+	reqTotal     prometheus.Counter
+	blockedTotal prometheus.Counter
+	redisGauge   prometheus.Gauge
+
 	mu          sync.Mutex
 	bucketStart time.Time
 	bucketCount int64
@@ -55,10 +63,12 @@ func newRecorder(now func() time.Time) *Recorder {
 	}
 	r.redisUp.Store(true)
 	r.bucketStart = now().Truncate(time.Second)
+	r.initMetrics()
 	return r
 }
 
 func (r *Recorder) Observe(key string, allowed bool, remaining, limit int64, fail string, storeFailed bool) {
+	r.reqTotal.Inc()
 	if storeFailed {
 		r.SetRedisUp(false)
 	}
@@ -66,6 +76,7 @@ func (r *Recorder) Observe(key string, allowed bool, remaining, limit int64, fai
 		r.allowed.Add(1)
 	} else {
 		r.blocked.Add(1)
+		r.blockedTotal.Inc()
 	}
 	used := limit - remaining
 	if used < 0 {
@@ -79,8 +90,25 @@ func (r *Recorder) Observe(key string, allowed bool, remaining, limit int64, fai
 	r.touchLocked(key, used, remaining, limit, fail)
 }
 
+// SetOnRedisChange registers a hook fired only when redis_up actually flips.
+// Set it once before WatchRedis / Check traffic starts.
+func (r *Recorder) SetOnRedisChange(fn func(up bool)) {
+	r.onRedisChange = fn
+}
+
 func (r *Recorder) SetRedisUp(up bool) {
-	r.redisUp.Store(up)
+	if up {
+		r.redisGauge.Set(1)
+	} else {
+		r.redisGauge.Set(0)
+	}
+	prev := r.redisUp.Swap(up)
+	if prev == up {
+		return
+	}
+	if r.onRedisChange != nil {
+		r.onRedisChange(up)
+	}
 }
 
 func (r *Recorder) Snapshot() Snapshot {

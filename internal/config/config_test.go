@@ -59,8 +59,8 @@ func TestLoadYAMLAndLookup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.ListenAddr != ":50051" || cfg.Redis.Addr != "127.0.0.1:6379" {
-		t.Fatalf("listen/redis: %+v", cfg)
+	if cfg.ListenAddr != ":50051" || cfg.Redis.Addr != "127.0.0.1:6379" || cfg.MetricsAddr != "" {
+		t.Fatalf("listen/redis/metrics: %+v", cfg)
 	}
 	cases := []struct {
 		key   string
@@ -78,6 +78,17 @@ func TestLoadYAMLAndLookup(t *testing.T) {
 		if p.Limit != tc.limit || p.Window != tc.win || p.Fail != tc.fail {
 			t.Fatalf("%s: got %+v", tc.key, p)
 		}
+	}
+}
+
+func TestLoadMetricsAddr(t *testing.T) {
+	body := sampleYAML + "metrics_addr: \":2112\"\n"
+	cfg, err := Load(writeTemp(t, "check.yaml", body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.MetricsAddr != ":2112" {
+		t.Fatalf("metrics_addr=%q", cfg.MetricsAddr)
 	}
 }
 

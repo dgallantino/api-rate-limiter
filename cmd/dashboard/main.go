@@ -4,8 +4,9 @@ import (
 	"embed"
 	"flag"
 	"io/fs"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 
 	"github.com/dgallantino/api-rate-limiter/internal/dashconfig"
 	checkv1 "github.com/dgallantino/api-rate-limiter/internal/gen/check/v1"
@@ -17,25 +18,33 @@ import (
 var webFS embed.FS
 
 func main() {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+
 	path := flag.String("config", "configs/dashboard.example.yaml", "path to YAML dashboard config")
 	flag.Parse()
 
 	cfg, err := dashconfig.Load(*path)
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("config", "err", err)
+		os.Exit(1)
 	}
 
 	conn, err := grpc.NewClient(cfg.CheckAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("dial check", "addr", cfg.CheckAddr, "err", err)
+		os.Exit(1)
 	}
 	defer conn.Close()
 
 	pages, err := fs.Sub(webFS, "web")
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("web", "err", err)
+		os.Exit(1)
 	}
 
-	log.Printf("dashboard listening on %s (check %s)", cfg.ListenAddr, cfg.CheckAddr)
-	log.Fatal(http.ListenAndServe(cfg.ListenAddr, newMux(checkv1.NewCheckerClient(conn), pages)))
+	slog.Info("dashboard listening", "addr", cfg.ListenAddr, "check", cfg.CheckAddr)
+	if err := http.ListenAndServe(cfg.ListenAddr, newMux(checkv1.NewCheckerClient(conn), pages)); err != nil {
+		slog.Error("serve", "err", err)
+		os.Exit(1)
+	}
 }
