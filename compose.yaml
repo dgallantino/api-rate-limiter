@@ -31,16 +31,10 @@ services:
   origin:
     build:
       context: .
-      dockerfile: deploy/Dockerfile.python
+      dockerfile: deploy/Dockerfile
       target: origin
     healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
-        ]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8000/health"]
       interval: 2s
       timeout: 2s
       retries: 10
@@ -48,7 +42,7 @@ services:
   origin-limited:
     build:
       context: .
-      dockerfile: deploy/Dockerfile.python
+      dockerfile: deploy/Dockerfile
       target: origin-limited
     ports:
       - "8000:8000"
@@ -58,13 +52,7 @@ services:
       check:
         condition: service_healthy
     healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
-        ]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8000/health"]
       interval: 2s
       timeout: 2s
       retries: 15

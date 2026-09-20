@@ -2,14 +2,7 @@
 .cursor
 .idea
 .vscode
-**/.venv
-python/.venv
 internal/gen
-python/gen
-**/__pycache__
-**/*.py[cod]
-**/*.egg-info
-.pytest_cache
 coverage.*
 *.out
 *.test

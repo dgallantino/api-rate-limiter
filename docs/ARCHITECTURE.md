@@ -22,7 +22,7 @@ The product is a standalone Check service plus adapters. Callers drop it in as a
 Two integration modes, one Check service. Only *where* the check runs changes.
 
 - **Pattern A — reverse proxy.** `cmd/proxy` sits in front of an origin that knows nothing about rate limits. It calls Check, then reverse-proxies if allowed. Compose publishes this on **`:8080`**.
-- **Pattern B — middleware.** The origin wraps itself (Python ASGI/WSGI or Go `net/http` via `pkg/httplimit`). The handler never runs if Check denies. Compose publishes the Python demo as `origin-limited` on **`:8000`**.
+- **Pattern B — middleware.** The origin wraps itself with Go `net/http` via `pkg/httplimit`. The handler never runs if Check denies. Compose publishes `origin-limited` (`cmd/origin -limited`) on **`:8000`**.
 
 Identity in the demo is the `X-API-Key` header. Prefix `free:` is Redis fail-open (20/min); prefix `pro:` is Redis fail-closed (500/min). There are two independent fail layers: Check ↔ Redis, and adapter ↔ Check.
 
@@ -47,7 +47,7 @@ flowchart LR
   dash -->|Stats| check
 ```
 
-Process split: only `cmd/check` talks to Redis. Proxy, dashboard, Go middleware, and Python adapters are gRPC clients of `check.v1.Checker` over h2c (insecure credentials, no TLS).
+Process split: only `cmd/check` talks to Redis. Proxy, dashboard, Go middleware, and the limited origin are gRPC clients of `check.v1.Checker` over h2c (insecure credentials, no TLS).
 
 ## Design decisions
 
@@ -75,7 +75,7 @@ What was chosen, why, and what that implies.
 
 **Dashboard is a dumb poller.** Vanilla HTML (`embed.FS`) plus `GET /stats` every 1s; each poll is one unary `Stats` RPC. No SSE, WebSocket, auth, or SPA. HTML is not served from `cmd/check`.
 
-**Proto is generated, not committed.** `make proto` writes `internal/gen/` and `python/gen/`. Image builds run `protoc` themselves; they do not copy host gen dirs.
+**Proto is generated, not committed.** `make proto` writes `internal/gen/`. Image builds run `protoc` themselves; they do not copy host gen dirs.
 
 **`/healthz` is process up, not Redis up.** Compose must not restart Check when Redis is killed; that *is* the demo. Check still serves fail-open/fail-closed from policy.
 
@@ -122,9 +122,7 @@ Shared deny contract:
 - Missing key or Check `InvalidArgument` → **400** `{"error":"bad_request"}`
 - Allowed responses get `X-RateLimit-Remaining` and then the origin handler runs
 
-**Go** (`pkg/httplimit`): `func(http.Handler) http.Handler`. Default key header `X-API-Key`. Unset `Cost` is 0 (peek); callers usually set `Cost: 1` or a `CostFunc`. Adapter `Fail` defaults to **closed** when the Check RPC fails (distinct from Redis fail mode). `Dial` is h2c.
-
-**Python** (`python/src/api_rate_limiter`): `RateLimitMiddleware` (ASGI) and `RateLimitWSGI`. Same key spec, cost, fail-open/closed. `dial` / `dial_aio` use insecure channels. Default cost **1**, default fail **closed**.
+`pkg/httplimit`: `func(http.Handler) http.Handler`. Default key header `X-API-Key`. Unset `Cost` is 0 (peek); callers usually set `Cost: 1` or a `CostFunc`. Adapter `Fail` defaults to **closed** when the Check RPC fails (distinct from Redis fail mode). `Dial` is h2c.
 
 **Proxy** (`cmd/proxy` + `internal/proxyconfig`): YAML `listen_addr`, `origin_url`, `check_addr`, `key` (`header:…` or `ip`), `cost` (default 1), `fail` (default closed). Logs listen, deny, and Check-down.
 
@@ -136,9 +134,7 @@ Shared deny contract:
 
 ### Demo origin
 
-`demo/origin/app.py`: FastAPI `/health` and `/work`, no limiter (Pattern A origin).
-
-`demo/origin/limited.py`: same app behind Python ASGI middleware. `GET /health` skips Check. `CHECK_ADDR` (default `127.0.0.1:50051`), cost 1, fail closed, `header:X-API-Key`.
+`cmd/origin`: `/health` and `/work`, no limiter of its own (Pattern A origin). `-limited` wraps non-health routes with `pkg/httplimit`. `GET /health` skips Check. `-check` / `CHECK_ADDR` (default `127.0.0.1:50051`), cost 1, fail closed, `header:X-API-Key`.
 
 ### Observability and packaging
 
@@ -152,11 +148,11 @@ Check HTTP (`internal/checkhttp`) on `metrics_addr`:
 
 `/healthz` returns `ok\n` while the process is up.
 
-JSON logs: Go `log/slog` `JSONHandler` to stdout, default info. Check: denials, Redis transitions, listen. Proxy: listen, deny, Check-down. Dashboard/loadtest: listen / end report. Python origin keeps uvicorn access logs.
+JSON logs: Go `log/slog` `JSONHandler` to stdout, default info. Check: denials, Redis transitions, listen. Proxy: listen, deny, Check-down. Origin: listen; deny and Check-down when `-limited`. Dashboard/loadtest: listen / end report.
 
 Compose (`compose.yaml`): `redis:7-alpine`, `check`, internal `origin`, `proxy` `:8080`, `origin-limited` `:8000`, `dashboard` `:8081`, `prometheus:v3.5.0` `:9090`, Check gRPC `:50051` and metrics `:2112`, Redis `:6379`. `loadtest` is profile `load`. Healthchecks: Redis `PING`, Check `/healthz`, origin `/health`, Prometheus `/-/healthy`. `depends_on` uses `service_healthy` except loadtest → proxy `service_started`.
 
-Images: `deploy/Dockerfile` (Go Alpine, `CGO_ENABLED=0`, wget for healthchecks) and `deploy/Dockerfile.python`. Configs are COPY'd and also bind-mounted from `configs/compose/` so limit tweaks do not require a rebuild. Prometheus scrape interval is **1s** (`configs/compose/prometheus.yml`) so `redis_up` moves on the same timescale as the dashboard.
+Images: `deploy/Dockerfile` (Go Alpine, `CGO_ENABLED=0`, wget for healthchecks) with targets `check`, `proxy`, `origin`, `origin-limited`, `dashboard`, `loadtest`. Configs are COPY'd and also bind-mounted from `configs/compose/` so limit tweaks do not require a rebuild. Prometheus scrape interval is **1s** (`configs/compose/prometheus.yml`) so `redis_up` moves on the same timescale as the dashboard.
 
 Go images are Alpine; proto is generated in the build. `.dockerignore` excludes `docs/` and `*.md`.
 
@@ -181,19 +177,17 @@ Go images are Alpine; proto is generated in the build. `.dockerignore` excludes 
 | `internal/proxyconfig/`, `internal/dashconfig/` | Proxy/dashboard YAML |
 | `internal/gen/` | Generated Go stubs (`make proto`, gitignored) |
 | `pkg/httplimit` | Exported Go middleware + h2c dial |
-| `python/` | ASGI/WSGI adapters; stubs in gitignored `python/gen/` |
-| `cmd/check`, `cmd/proxy`, `cmd/dashboard`, `cmd/loadtest` | Binaries |
-| `demo/origin` | FastAPI origin; `limited.py` is Pattern B |
+| `cmd/check`, `cmd/proxy`, `cmd/origin`, `cmd/dashboard`, `cmd/loadtest` | Binaries |
 | `configs/*.example.yaml` | Host `make` loop |
 | `configs/compose/` | Service DNS names for Compose |
-| `deploy/` | Dockerfiles |
+| `deploy/` | Dockerfile |
 | `compose.yaml` | One-command demo |
 
 Local loop (needs `protoc` on `PATH`): `make proto`, `make redis`, `go run ./cmd/check`, plus `run-origin` / `run-proxy` / `run-dashboard` / `loadtest`. Tests use **miniredis**, not a container. Do not run `make redis` on `:6379` in the same session as Compose.
 
 ## Correctness
 
-Re-run these if you touch the named area. `make test` / `make test-race` / `make test-python`.
+Re-run these if you touch the named area. `make test` / `make test-race`.
 
 | Claim | Where |
 | --- | --- |
@@ -204,8 +198,9 @@ Re-run these if you touch the named area. `make test` / `make test-race` / `make
 | Policy lookup: exact key, longest prefix, default; YAML and JSON | `internal/config/config_test.go` |
 | Stats counts, cap 50, store-fail latches `redis_up` | `internal/stats`, `internal/server/stats_test.go` |
 | Three Prometheus series only; `/healthz` ignores Redis | `internal/checkhttp/handler_test.go` |
-| Adapter allow / 429 / Check-down fail-open\|closed | `pkg/httplimit/middleware_test.go`, `python/tests/` |
+| Adapter allow / 429 / Check-down fail-open\|closed | `pkg/httplimit/middleware_test.go` |
 | Proxy deny never hits origin | `cmd/proxy/handler_test.go` |
+| Origin `/health` skips Check; `-limited` deny does not run `/work` | `cmd/origin/handler_test.go` |
 
 The live Compose path (dashboard throttle, `compose stop redis`, Prometheus `:9090`, JSON `compose logs check`) is the README demo, not an automated test.
 
