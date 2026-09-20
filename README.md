@@ -4,7 +4,7 @@ A standalone rate-limiting/quota service that businesses drop in front of an exi
 
 **Atomic, low-latency limits that survive concurrent load and fail open or closed when Redis is down.**
 
-Full MVP definition: [docs/MVP.md](docs/MVP.md).
+How the system is built and why: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Who it's for
 
@@ -111,6 +111,6 @@ This is a signal, not an omission:
 - Multi-region / geo-distributed rate limiting
 - Billing/payment integration
 - Full auth/RBAC for the dashboard or `/metrics`
-- Horizontal sharding of the rate-limit store (single Redis is fine for MVP)
+- Horizontal sharding of the rate-limit store (single Redis)
 - WebSocket/streaming-aware proxying beyond basic passthrough
 - Grafana, Loki, OpenTelemetry, Kubernetes/Helm, TLS
