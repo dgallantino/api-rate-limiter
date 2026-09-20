@@ -17,7 +17,8 @@ RUN mkdir -p internal/gen && protoc \
 RUN go build -o /out/check ./cmd/check \
 	&& go build -o /out/proxy ./cmd/proxy \
 	&& go build -o /out/dashboard ./cmd/dashboard \
-	&& go build -o /out/loadtest ./cmd/loadtest
+	&& go build -o /out/loadtest ./cmd/loadtest \
+	&& go build -o /out/origin ./cmd/origin
 
 FROM alpine:3.21 AS runtime
 RUN apk add --no-cache ca-certificates wget \
@@ -44,3 +45,14 @@ CMD ["dashboard", "-config", "/etc/api-rate-limiter/dashboard.yaml"]
 FROM runtime AS loadtest
 COPY --from=build /out/loadtest /usr/local/bin/loadtest
 CMD ["loadtest"]
+
+FROM runtime AS origin
+COPY --from=build /out/origin /usr/local/bin/origin
+EXPOSE 8000
+CMD ["origin"]
+
+FROM runtime AS origin-limited
+COPY --from=build /out/origin /usr/local/bin/origin
+ENV CHECK_ADDR=check:50051
+EXPOSE 8000
+CMD ["origin", "-limited"]

@@ -16,7 +16,7 @@ Pick one integration mode. Both call the same Check gRPC service; only *where* t
 
 **Pattern A — reverse proxy.** Run `proxy` in front of an origin that knows nothing about rate limits. The proxy calls Check, then forwards the request byte-for-byte if allowed. Use this when you cannot (or do not want to) change origin code, when you have several origins, or when you want a single choke-point. Demo: host **`:8080`**.
 
-**Pattern B — middleware.** Wrap the origin in-process (Python ASGI/WSGI or Go `net/http` via `pkg/httplimit`). The handler never runs if Check denies. Use this when you already own the app, want per-route costs, or do not want an extra network hop. Demo: host **`:8000`** (`origin-limited`).
+**Pattern B — middleware.** Wrap the origin in-process with Go `net/http` via `pkg/httplimit`. The handler never runs if Check denies. Use this when you already own the app, want per-route costs, or do not want an extra network hop. Demo: host **`:8000`** (`origin-limited`).
 
 A denied request returns HTTP 429 and does not hit origin work. Identity is the `X-API-Key` header in this demo (`free:…` is fail-open, `pro:…` is fail-closed).
 
@@ -99,10 +99,7 @@ Other terminals: `make run-origin`, `make run-proxy`, `make run-dashboard`, `mak
 ```bash
 make test
 make test-race
-make test-python
 ```
-
-Python tests: `python3 -m venv python/.venv && python/.venv/bin/pip install -e 'python/[dev]'`.
 
 ## Out of scope
 
