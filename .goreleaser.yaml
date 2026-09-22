@@ -55,38 +55,6 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-  - id: origin
-    main: ./cmd/origin
-    binary: origin
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-      - darwin
-      - windows
-    goarch:
-      - amd64
-      - arm64
-    flags:
-      - -trimpath
-    ldflags:
-      - -s -w
-  - id: loadtest
-    main: ./cmd/loadtest
-    binary: loadtest
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-      - darwin
-      - windows
-    goarch:
-      - amd64
-      - arm64
-    flags:
-      - -trimpath
-    ldflags:
-      - -s -w
 
 archives:
   - format_overrides:
