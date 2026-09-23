@@ -69,7 +69,7 @@ What was chosen, why, and what that implies.
 
 **Stats are in-process on Check.** Allowed/blocked totals, last-completed 1s RPS bucket, `redis_up`, and an LRU of at most **50** last-seen keys. Per-key rows are not stored in Redis. Restarting Check zeroes Stats.
 
-**`redis_up` is latched down, pinged up.** Lua/Check store errors set `redis_up` false. A later successful Check does **not** flip it back. A background Redis `PING` (~1s) is what sets it true again.
+**`redis_up` is latched down, pinged up.** A store error sets `redis_up` false. While it is false, Check returns the policy fail result and does not call Redis. A later successful Check does **not** flip it back. A background Redis `PING` (~1s) sets it true again. If a Check has already been inside Redis for 50ms, later Checks fail immediately and latch down.
 
 **Prometheus lives only on Check.** Side HTTP listener (`metrics_addr`, demo **`:2112`**): `/metrics` and `/healthz`. Custom registry, three series, no per-key labels, no default Go collectors. Stats and metrics share `stats.Recorder.Observe`. Proxy, dashboard, and adapters do not export metrics.
 
@@ -196,7 +196,7 @@ Re-run these if you touch the named area. `make test` / `make test-race`.
 | Claim | Where |
 | --- | --- |
 | N concurrent Checks against limit M admit exactly M (10 runs) | `internal/server/concurrency_test.go` |
-| Redis down is fail-open vs fail-closed, not a dead flag | `internal/engine/slidingwindow/limiter_test.go`, `internal/server/failover_test.go` |
+| Redis down is fail-open vs fail-closed; latched down skips Redis | `internal/engine/slidingwindow/limiter_test.go`, `internal/engine/slidingwindow/breaker_test.go`, `internal/server/failover_test.go` |
 | Peek (`cost=0`) does not increment or create a missing key | `limiter_test.go` |
 | Window roll / cost > limit | `limiter_test.go` |
 | Policy lookup: exact key, longest prefix, default; YAML and JSON | `internal/config/config_test.go` |
