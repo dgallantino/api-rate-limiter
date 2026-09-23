@@ -18,7 +18,7 @@ services:
       - "50051:50051"
       - "2112:2112"
     volumes:
-      - ./configs/compose/check.yaml:/etc/api-rate-limiter/check.yaml:ro
+      - ./configs/compose:/etc/api-rate-limiter
     depends_on:
       redis:
         condition: service_healthy

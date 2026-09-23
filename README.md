@@ -38,7 +38,7 @@ flowchart LR
   check --> redis
   check --> metrics
   prom -->|scrape 1s| metrics
-  dash -->|Stats| check
+  dash -->|Stats and SetLimit| check
 ```
 
 ## 5-minute live demo (Compose)
