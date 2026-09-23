@@ -20,6 +20,12 @@
     th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid #333; }
     th { color: #aaa; font-weight: 500; }
     .muted { color: #888; }
+    h2 { font-size: 1rem; font-weight: 600; margin: 0 0 .75rem; }
+    form { display: flex; flex-wrap: wrap; gap: .75rem; align-items: end; margin-bottom: 1.25rem; }
+    label { display: flex; flex-direction: column; gap: .25rem; color: #aaa; font-size: 12px; }
+    input, select, button { font: inherit; background: #1b1b1b; color: #eee; border: 1px solid #333; border-radius: 6px; padding: .4rem .6rem; }
+    button { cursor: pointer; }
+    #limit-msg { align-self: center; }
   </style>
 </head>
 <body>
@@ -31,6 +37,17 @@
     <div class="card">Allowed <b id="allowed">—</b></div>
     <div class="card">Blocked <b id="blocked">—</b></div>
   </div>
+  <h2>Limits</h2>
+  <form id="limit-form">
+    <label>Rule
+      <select id="rule" required></select>
+    </label>
+    <label>Limit
+      <input id="limit" type="number" min="1" step="1" required>
+    </label>
+    <button type="submit">Update limit</button>
+    <span id="limit-msg" class="muted"></span>
+  </form>
   <table>
     <thead>
       <tr>
@@ -51,6 +68,80 @@
     const allowedEl = document.getElementById("allowed");
     const blockedEl = document.getElementById("blocked");
     const keysEl = document.getElementById("keys");
+    const form = document.getElementById("limit-form");
+    const ruleEl = document.getElementById("rule");
+    const limitEl = document.getElementById("limit");
+    const limitMsg = document.getElementById("limit-msg");
+    let rules = [];
+
+    function ruleLabel(rule) {
+      if (rule.target === "default") return "default (" + rule.limit + ")";
+      return rule.target + " " + rule.name + " (" + rule.limit + ")";
+    }
+
+    function selectedRule() {
+      const i = Number(ruleEl.value);
+      return rules[i];
+    }
+
+    function fillLimit() {
+      const rule = selectedRule();
+      if (rule) limitEl.value = rule.limit;
+    }
+
+    async function loadPolicies() {
+      try {
+        const r = await fetch("/policies");
+        const body = await r.json();
+        if (!r.ok) {
+          limitMsg.textContent = body.error || "check unreachable";
+          limitMsg.className = "bad";
+          return;
+        }
+        const prev = ruleEl.value;
+        rules = body.rules || [];
+        ruleEl.replaceChildren();
+        rules.forEach((rule, i) => {
+          const opt = document.createElement("option");
+          opt.value = String(i);
+          opt.textContent = ruleLabel(rule);
+          ruleEl.appendChild(opt);
+        });
+        if (prev !== "" && rules[Number(prev)]) ruleEl.value = prev;
+        fillLimit();
+      } catch (e) {
+        limitMsg.textContent = "check unreachable";
+        limitMsg.className = "bad";
+      }
+    }
+
+    ruleEl.addEventListener("change", fillLimit);
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const rule = selectedRule();
+      if (!rule) return;
+      limitMsg.textContent = "";
+      try {
+        const r = await fetch("/limits", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ target: rule.target, name: rule.name, limit: Number(limitEl.value) }),
+        });
+        const body = await r.json();
+        if (!r.ok) {
+          limitMsg.textContent = body.error || "update failed";
+          limitMsg.className = "bad";
+          return;
+        }
+        limitMsg.textContent = "limit updated";
+        limitMsg.className = "ok";
+        await loadPolicies();
+      } catch (err) {
+        limitMsg.textContent = "check unreachable";
+        limitMsg.className = "bad";
+      }
+    });
+    loadPolicies();
 
     function failAction(fail) {
       return fail === "open" ? "still serving" : "denying";

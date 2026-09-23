@@ -44,7 +44,7 @@ flowchart LR
   check --> redis
   check --> metrics
   prom -->|scrape 1s| metrics
-  dash -->|Stats| check
+  dash -->|Stats and SetLimit| check
 ```
 
 Process split: only `cmd/check` talks to Redis. Proxy, dashboard, Go middleware, and the limited origin are gRPC clients of `check.v1.Checker` over h2c (insecure credentials, no TLS).
@@ -57,11 +57,11 @@ What was chosen, why, and what that implies.
 
 **Opaque string keys.** The engine does not interpret API key vs IP vs custom. HTTP adapters extract a string (`header:<name>` or `ip`); Check only does policy lookup on that string.
 
-**Unary gRPC `Check` and `Stats`, h2c.** One Check RPC is the product API. Stats is additive on the same service, not a stream and not a change to `CheckRequest`/`CheckResponse`. Local and Compose demos dial without certs. grpc-go server reflection is on so grpcurl works against **`:50051`**.
+**Unary gRPC `Check`, `Stats`, `ListPolicies`, and `SetLimit`, h2c.** One Check RPC is the product API. Stats and the limit admin RPCs are additive on the same service, not a stream and not a change to `CheckRequest`/`CheckResponse`. Local and Compose demos dial without certs. grpc-go server reflection is on so grpcurl works against **`:50051`**.
 
 **Redis only; counters are ephemeral.** No app SQL. A Redis restart can wipe usage. AOF/RDB is optional ops, not a product requirement. Redis keys are `rl:<key>` hashes with `PEXPIRE` of `2 * window`.
 
-**Policy on disk.** Check loads YAML or JSON: `listen_addr`, optional `metrics_addr`, `redis.addr`, `default`, optional exact `keys`, optional `prefixes`. Proxy and dashboard load YAML only. No admin RPC, no env-var policy overlay.
+**Policy on disk.** Check loads YAML or JSON: `listen_addr`, optional `metrics_addr`, `redis.addr`, `default`, optional exact `keys`, optional `prefixes`. `ListPolicies` and `SetLimit` change an existing rule’s `limit` at runtime. `SetLimit` rewrites that same file (temp file, sync, rename) and then publishes the new snapshot. The next Check uses the new limit; Redis counters are not reset. Window and fail stay as loaded. Unknown targets and `limit <= 0` are rejected and leave memory and disk unchanged. Proxy and dashboard load YAML only. No env-var policy overlay.
 
 **Check is the only Redis client.** Adapters must not import `internal/engine` or talk to Redis. Go generated stubs live under `internal/gen/` because of the proto `go_package`; `pkg/httplimit` imports that package, not the limiter.
 
@@ -73,7 +73,7 @@ What was chosen, why, and what that implies.
 
 **Prometheus lives only on Check.** Side HTTP listener (`metrics_addr`, demo **`:2112`**): `/metrics` and `/healthz`. Custom registry, three series, no per-key labels, no default Go collectors. Stats and metrics share `stats.Recorder.Observe`. Proxy, dashboard, and adapters do not export metrics.
 
-**Dashboard is a dumb poller.** Vanilla HTML (`embed.FS`) plus `GET /stats` every 1s; each poll is one unary `Stats` RPC. No SSE, WebSocket, auth, or SPA. HTML is not served from `cmd/check`.
+**Dashboard is a dumb poller.** Vanilla HTML (`embed.FS`) plus `GET /stats` every 1s; each poll is one unary `Stats` RPC. A form loads rules from `GET /policies` (`ListPolicies`) and submits `POST /limits` (`SetLimit`). No SSE, WebSocket, auth, or SPA. HTML is not served from `cmd/check`.
 
 **Proto is generated, not committed.** `make proto` writes `internal/gen/`. Image builds run `protoc` themselves; they do not copy host gen dirs.
 
@@ -112,6 +112,10 @@ Store errors become `engine.Result{StoreFailed: true}` plus allow or deny from `
 
 `Stats` returns in-process snapshot: `allowed`, `blocked`, `rps`, `redis_up`, `keys[]` (`key`, `used`, `remaining`, `limit`, `fail`). `used` is `limit - remaining`. Key order is most-recently observed first.
 
+`ListPolicies` returns every rule: `default`, each exact key, each prefix (`target`, `name`, `limit`, `window`, `fail`).
+
+`SetLimit(target, name, limit)` updates that rule’s limit. `target` is default, key, or prefix. `name` is empty for default and is the key or prefix otherwise. The rule must already exist. After the config file is renamed into place, the in-memory snapshot swaps. A failed rename keeps the previous snapshot.
+
 ### HTTP adapters
 
 Shared deny contract:
@@ -128,7 +132,7 @@ Shared deny contract:
 
 ### Dashboard and load-test
 
-`cmd/dashboard`: YAML listen + Check addr. `GET /` is the page; `GET /stats` JSON. Check unreachable → **502** `{"error":"check unreachable"}`. UI shows rps, allowed/blocked, per-key table, and Redis down copy that names fail-open vs fail-closed.
+`cmd/dashboard`: YAML listen + Check addr. `GET /` is the page; `GET /stats` JSON; `GET /policies` JSON; `POST /limits` JSON. Check unreachable → **502** `{"error":"check unreachable"}`. `SetLimit` invalid argument → **400**. UI shows rps, allowed/blocked, per-key table, Redis down copy that names fail-open vs fail-closed, and a form to change an existing rule’s limit.
 
 `cmd/loadtest`: constant-rate **HTTP** against the demo API (not a gRPC flood). Defaults: `http://127.0.0.1:8080/work`, 20 rps, 30s, header `X-API-Key`, keys `free:demo,pro:demo`. Prints allow / 429 / error totals per key.
 
@@ -152,7 +156,7 @@ JSON logs: Go `log/slog` `JSONHandler` to stdout, default info. Check: denials, 
 
 Compose (`compose.yaml`): `redis:7-alpine`, `check`, internal `origin`, `proxy` `:8080`, `origin-limited` `:8000`, `dashboard` `:8081`, `prometheus:v3.5.0` `:9090`, Check gRPC `:50051` and metrics `:2112`, Redis `:6379`. `loadtest` is profile `load`. Healthchecks: Redis `PING`, Check `/healthz`, origin `/health`, Prometheus `/-/healthy`. `depends_on` uses `service_healthy` except loadtest → proxy `service_started`.
 
-Images: `deploy/Dockerfile` (Go Alpine, `CGO_ENABLED=0`, wget for healthchecks) with targets `check`, `proxy`, `origin`, `origin-limited`, `dashboard`, `loadtest`. Configs are COPY'd and also bind-mounted from `configs/compose/` so limit tweaks do not require a rebuild. Prometheus scrape interval is **1s** (`configs/compose/prometheus.yml`) so `redis_up` moves on the same timescale as the dashboard.
+Images: `deploy/Dockerfile` (Go Alpine, `CGO_ENABLED=0`, wget for healthchecks) with targets `check`, `proxy`, `origin`, `origin-limited`, `dashboard`, `loadtest`. Configs are COPY'd and also bind-mounted from `configs/compose/`. Check mounts that directory writable so `SetLimit` can rename `check.yaml` onto the host file; a single-file mount cannot be renamed over. The other service mounts stay read-only. Prometheus scrape interval is **1s** (`configs/compose/prometheus.yml`) so `redis_up` moves on the same timescale as the dashboard.
 
 Go images are Alpine; proto is generated in the build. `.dockerignore` excludes `docs/` and `*.md`.
 
@@ -168,7 +172,7 @@ Go images are Alpine; proto is generated in the build. `.dockerignore` excludes 
 
 | Path | Role |
 | --- | --- |
-| `proto/check/v1/` | Source of truth for Check + Stats |
+| `proto/check/v1/` | Source of truth for Check, Stats, and limit admin |
 | `internal/engine/` | Lua sliding window |
 | `internal/config/` | Check YAML/JSON policy |
 | `internal/server/` | gRPC service |
@@ -196,6 +200,7 @@ Re-run these if you touch the named area. `make test` / `make test-race`.
 | Peek (`cost=0`) does not increment or create a missing key | `limiter_test.go` |
 | Window roll / cost > limit | `limiter_test.go` |
 | Policy lookup: exact key, longest prefix, default; YAML and JSON | `internal/config/config_test.go` |
+| `SetLimit` updates the next Check and reloads from the file | `internal/config/config_test.go`, `internal/server/server_test.go` |
 | Stats counts, cap 50, store-fail latches `redis_up` | `internal/stats`, `internal/server/stats_test.go` |
 | Three Prometheus series only; `/healthz` ignores Redis | `internal/checkhttp/handler_test.go` |
 | Adapter allow / 429 / Check-down fail-open\|closed | `pkg/httplimit/middleware_test.go` |
@@ -211,7 +216,6 @@ Not scheduled. Do not treat this as a commitment to build next.
 **Plausible follow-ons** :
 
 - Token bucket as a second algorithm, selectable per key
-- Admin RPC/UI to change limits at runtime instead of editing a file
 - Multi-tenant dashboard (per-tenant view, not only global)
 - API-key issuance (generate a key, tie it to a tier)
 - Multi-instance over-admission test (several Check processes, one Redis)
