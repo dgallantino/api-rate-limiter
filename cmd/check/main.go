@@ -79,7 +79,8 @@ func main() {
 	}
 
 	gs := grpc.NewServer()
-	checkv1.RegisterCheckerServer(gs, server.New(cfg, slidingwindow.New(rdb), rec).WithLogger(slog.Default()))
+	checkv1.RegisterCheckerServer(
+		gs, server.New(config.NewStore(cfg), slidingwindow.New(rdb), rec).WithLogger(slog.Default()))
 	reflection.Register(gs)
 	slog.Info("check listening", "grpc", cfg.ListenAddr)
 	if err := gs.Serve(lis); err != nil {
