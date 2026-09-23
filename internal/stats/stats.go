@@ -96,6 +96,11 @@ func (r *Recorder) SetOnRedisChange(fn func(up bool)) {
 	r.onRedisChange = fn
 }
 
+// RedisUp is the latched gauge. Check skips Redis while this is false.
+func (r *Recorder) RedisUp() bool {
+	return r.redisUp.Load()
+}
+
 func (r *Recorder) SetRedisUp(up bool) {
 	if up {
 		r.redisGauge.Set(1)

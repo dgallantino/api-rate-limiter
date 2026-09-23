@@ -13,7 +13,9 @@ import (
 func setup(t *testing.T) (*Limiter, *miniredis.Miniredis) {
 	t.Helper()
 	mr := miniredis.RunT(t)
-	l := New(redis.NewClient(&redis.Options{Addr: mr.Addr()}))
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	l := New(rdb)
 	return l, mr
 }
 

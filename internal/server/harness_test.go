@@ -9,6 +9,7 @@ import (
 	"github.com/dgallantino/api-rate-limiter/internal/config"
 	"github.com/dgallantino/api-rate-limiter/internal/engine/slidingwindow"
 	checkv1 "github.com/dgallantino/api-rate-limiter/internal/gen/check/v1"
+	"github.com/dgallantino/api-rate-limiter/internal/stats"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -27,12 +28,14 @@ func startTestServer(t *testing.T, cfg *config.Config) *testEnv {
 	}
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	rec := stats.New()
+	lim := slidingwindow.New(rdb).WithBreaker(rec.RedisUp, func() { rec.SetRedisUp(false) })
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	gs := grpc.NewServer()
-	checkv1.RegisterCheckerServer(gs, New(config.NewStore(cfg), slidingwindow.New(rdb), nil))
+	checkv1.RegisterCheckerServer(gs, New(config.NewStore(cfg), lim, rec))
 	go gs.Serve(lis)
 	conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {

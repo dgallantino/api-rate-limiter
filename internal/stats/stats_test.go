@@ -39,8 +39,11 @@ func TestStoreFailedLatchesRedisDown(t *testing.T) {
 	if rec.Snapshot().RedisUp {
 		t.Fatal("expected redis_up false")
 	}
+	if rec.RedisUp() {
+		t.Fatal("expected redis_up false")
+	}
 	rec.Observe("k", true, 19, 20, "open", false)
-	if rec.Snapshot().RedisUp {
+	if rec.RedisUp() {
 		t.Fatal("successful check must not raise redis_up")
 	}
 }
