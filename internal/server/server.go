@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/dgallantino/api-rate-limiter/internal/config"
@@ -14,17 +16,20 @@ import (
 
 type Server struct {
 	checkv1.UnimplementedCheckerServer
-	cfg     *config.Config
+	store   *config.Store
 	checker engine.Checker
 	rec     *stats.Recorder
 	log     *slog.Logger
 }
 
-func New(cfg *config.Config, checker engine.Checker, rec *stats.Recorder) *Server {
+func New(store *config.Store, checker engine.Checker, rec *stats.Recorder) *Server {
+	if store == nil {
+		store = config.NewStore(nil)
+	}
 	if rec == nil {
 		rec = stats.New()
 	}
-	return &Server{cfg: cfg, checker: checker, rec: rec}
+	return &Server{store: store, checker: checker, rec: rec}
 }
 
 func (s *Server) WithLogger(log *slog.Logger) *Server {
@@ -39,7 +44,7 @@ func (s *Server) Check(ctx context.Context, req *checkv1.CheckRequest) (*checkv1
 	if req.GetCost() < 0 {
 		return nil, status.Error(codes.InvalidArgument, "cost must be >= 0")
 	}
-	policy := s.cfg.Lookup(req.GetKey())
+	policy := s.store.Lookup(req.GetKey())
 	res, err := s.checker.Check(ctx, req.GetKey(), req.GetCost(), policy)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "check: %v", err)
@@ -79,4 +84,67 @@ func (s *Server) Stats(context.Context, *checkv1.StatsRequest) (*checkv1.StatsSn
 		RedisUp: snap.RedisUp,
 		Keys:    keys,
 	}, nil
+}
+
+func (s *Server) ListPolicies(context.Context, *checkv1.ListPoliciesRequest) (*checkv1.ListPoliciesResponse, error) {
+	rules := s.store.List()
+	out := make([]*checkv1.PolicyRule, len(rules))
+	for i, rule := range rules {
+		out[i] = toProtoRule(rule)
+	}
+	return &checkv1.ListPoliciesResponse{Rules: out}, nil
+}
+
+func (s *Server) SetLimit(_ context.Context, req *checkv1.SetLimitRequest) (*checkv1.SetLimitResponse, error) {
+	target, err := fromProtoTarget(req.GetTarget())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	rule, err := s.store.SetLimit(target, req.GetName(), req.GetLimit())
+	if err != nil {
+		if errors.Is(err, config.ErrInvalidLimit) || errors.Is(err, config.ErrUnknownPolicy) {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+		return nil, status.Errorf(codes.Internal, "set limit: %v", err)
+	}
+	if s.log != nil {
+		s.log.Info("set limit", "target", string(rule.Target), "name", rule.Name, "limit", rule.Policy.Limit)
+	}
+	return &checkv1.SetLimitResponse{Rule: toProtoRule(rule)}, nil
+}
+
+func toProtoRule(rule config.Rule) *checkv1.PolicyRule {
+	return &checkv1.PolicyRule{
+		Target: toProtoTarget(rule.Target),
+		Name:   rule.Name,
+		Limit:  rule.Policy.Limit,
+		Window: rule.Policy.WindowString(),
+		Fail:   rule.Policy.Fail.String(),
+	}
+}
+
+func toProtoTarget(target config.Target) checkv1.PolicyTarget {
+	switch target {
+	case config.TargetDefault:
+		return checkv1.PolicyTarget_POLICY_TARGET_DEFAULT
+	case config.TargetKey:
+		return checkv1.PolicyTarget_POLICY_TARGET_KEY
+	case config.TargetPrefix:
+		return checkv1.PolicyTarget_POLICY_TARGET_PREFIX
+	default:
+		return checkv1.PolicyTarget_POLICY_TARGET_UNSPECIFIED
+	}
+}
+
+func fromProtoTarget(target checkv1.PolicyTarget) (config.Target, error) {
+	switch target {
+	case checkv1.PolicyTarget_POLICY_TARGET_DEFAULT:
+		return config.TargetDefault, nil
+	case checkv1.PolicyTarget_POLICY_TARGET_KEY:
+		return config.TargetKey, nil
+	case checkv1.PolicyTarget_POLICY_TARGET_PREFIX:
+		return config.TargetPrefix, nil
+	default:
+		return "", fmt.Errorf("config: %w", config.ErrUnknownPolicy)
+	}
 }

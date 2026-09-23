@@ -7,6 +7,8 @@ option go_package = "github.com/dgallantino/api-rate-limiter/internal/gen/check/
 service Checker {
   rpc Check(CheckRequest) returns (CheckResponse);
   rpc Stats(StatsRequest) returns (StatsSnapshot);
+  rpc ListPolicies(ListPoliciesRequest) returns (ListPoliciesResponse);
+  rpc SetLimit(SetLimitRequest) returns (SetLimitResponse);
 }
 
 message CheckRequest {
@@ -36,4 +38,35 @@ message StatsSnapshot {
   int64 rps = 3;
   bool redis_up = 4;
   repeated KeyStat keys = 5;
+}
+
+enum PolicyTarget {
+  POLICY_TARGET_UNSPECIFIED = 0;
+  POLICY_TARGET_DEFAULT = 1;
+  POLICY_TARGET_KEY = 2;
+  POLICY_TARGET_PREFIX = 3;
+}
+
+message PolicyRule {
+  PolicyTarget target = 1;
+  string name = 2;
+  int64 limit = 3;
+  string window = 4;
+  string fail = 5;
+}
+
+message ListPoliciesRequest {}
+
+message ListPoliciesResponse {
+  repeated PolicyRule rules = 1;
+}
+
+message SetLimitRequest {
+  PolicyTarget target = 1;
+  string name = 2;
+  int64 limit = 3;
+}
+
+message SetLimitResponse {
+  PolicyRule rule = 1;
 }
