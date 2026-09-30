@@ -44,3 +44,4 @@ __debug_bin*
 
 # Bench artifacts
 bench/results/
+/bench/bench
