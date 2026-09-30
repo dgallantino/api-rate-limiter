@@ -54,7 +54,7 @@ docker compose up --build
 Then:
 
 1. Open the dashboard: [http://127.0.0.1:8081](http://127.0.0.1:8081)
-2. Fire load against Pattern A (does **not** start with default `up` — it would burn the `free:` limit before you look):
+2. Fire load against Pattern A (does **not** start with default `up` — it would burn the `free:` limit before you look). Vegeta v12.13.0 sends 20 requests/s for 30s, rotating `free:demo` and `pro:demo`, and prints totals plus status-code counts. The dashboard still shows per-key usage:
 
 ```bash
 docker compose --profile load run --rm loadtest
@@ -94,7 +94,7 @@ make proto
 go run ./cmd/check -config configs/check.example.yaml
 ```
 
-Other terminals: `make run-origin`, `make run-proxy`, `make run-dashboard`, `make loadtest`. Pattern B: `make run-origin-limited` then curl `:8000/work`. Kill Redis: `make redis-stop` / `make redis-start`.
+Other terminals: `make run-origin`, `make run-proxy`, `make run-dashboard`, `make loadtest` (vegeta v12.13.0, 20/s for 30s, against `:8080/work`). Pattern B: `make run-origin-limited` then curl `:8000/work`. Kill Redis: `make redis-stop` / `make redis-start`.
 
 ```bash
 make test

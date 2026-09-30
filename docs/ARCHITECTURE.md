@@ -134,7 +134,7 @@ Shared deny contract:
 
 `cmd/dashboard`: YAML listen + Check addr. `GET /` is the page; `GET /stats` JSON; `GET /policies` JSON; `POST /limits` JSON. Check unreachable → **502** `{"error":"check unreachable"}`. `SetLimit` invalid argument → **400**. UI shows rps, allowed/blocked, per-key table, Redis down copy that names fail-open vs fail-closed, and a form to change an existing rule’s limit.
 
-`cmd/loadtest`: constant-rate **HTTP** against the demo API (not a gRPC flood). Defaults: `http://127.0.0.1:8080/work`, 20 rps, 30s, header `X-API-Key`, keys `free:demo,pro:demo`. Prints allow / 429 / error totals per key.
+`make loadtest` runs vegeta v12.13.0: constant-rate **HTTP** against the demo API (not a gRPC flood). Defaults: `http://127.0.0.1:8080/work`, 20/s, 30s, header `X-API-Key`, keys `free:demo` and `pro:demo` from `configs/vegeta-targets.example.txt`. `vegeta report` prints totals and status-code counts. Per-key usage stays on the dashboard.
 
 ### Demo origin
 
@@ -152,11 +152,11 @@ Check HTTP (`internal/checkhttp`) on `metrics_addr`:
 
 `/healthz` returns `ok\n` while the process is up.
 
-JSON logs: Go `log/slog` `JSONHandler` to stdout, default info. Check: denials, Redis transitions, listen. Proxy: listen, deny, Check-down. Origin: listen; deny and Check-down when `-limited`. Dashboard/loadtest: listen / end report.
+JSON logs: Go `log/slog` `JSONHandler` to stdout, default info. Check: denials, Redis transitions, listen. Proxy: listen, deny, Check-down. Origin: listen; deny and Check-down when `-limited`. Dashboard: listen. The Compose `loadtest` service prints a vegeta report and exits.
 
 Compose (`compose.yaml`): `redis:7-alpine`, `check`, internal `origin`, `proxy` `:8080`, `origin-limited` `:8000`, `dashboard` `:8081`, `prometheus:v3.5.0` `:9090`, Check gRPC `:50051` and metrics `:2112`, Redis `:6379`. `loadtest` is profile `load`. Healthchecks: Redis `PING`, Check `/healthz`, origin `/health`, Prometheus `/-/healthy`. `depends_on` uses `service_healthy` except loadtest → proxy `service_started`.
 
-Images: `deploy/Dockerfile` (Go Alpine, `CGO_ENABLED=0`, wget for healthchecks) with targets `check`, `proxy`, `origin`, `origin-limited`, `dashboard`, `loadtest`. Configs are COPY'd and also bind-mounted from `configs/compose/`. Check mounts that directory writable so `SetLimit` can rename `check.yaml` onto the host file; a single-file mount cannot be renamed over. The other service mounts stay read-only. Prometheus scrape interval is **1s** (`configs/compose/prometheus.yml`) so `redis_up` moves on the same timescale as the dashboard.
+Images: `deploy/Dockerfile` (Go Alpine, `CGO_ENABLED=0`, wget for healthchecks) with targets `check`, `proxy`, `origin`, `origin-limited`, `dashboard`, `vegeta`. The Compose service is still named `loadtest` and uses the `vegeta` target (`ARG VEGETA_VERSION=v12.13.0`). Configs are COPY'd and also bind-mounted from `configs/compose/`. Check mounts that directory writable so `SetLimit` can rename `check.yaml` onto the host file; a single-file mount cannot be renamed over. The other service mounts stay read-only. Prometheus scrape interval is **1s** (`configs/compose/prometheus.yml`) so `redis_up` moves on the same timescale as the dashboard.
 
 Go images are Alpine; proto is generated in the build. `.dockerignore` excludes `docs/` and `*.md`.
 
@@ -181,13 +181,13 @@ Go images are Alpine; proto is generated in the build. `.dockerignore` excludes 
 | `internal/proxyconfig/`, `internal/dashconfig/` | Proxy/dashboard YAML |
 | `internal/gen/` | Generated Go stubs (`make proto`, gitignored) |
 | `pkg/httplimit` | Exported Go middleware + h2c dial |
-| `cmd/check`, `cmd/proxy`, `cmd/origin`, `cmd/dashboard`, `cmd/loadtest` | Binaries |
+| `cmd/check`, `cmd/proxy`, `cmd/origin`, `cmd/dashboard` | Binaries |
 | `configs/*.example.yaml` | Host `make` loop |
 | `configs/compose/` | Service DNS names for Compose |
 | `deploy/` | Dockerfile |
 | `compose.yaml` | One-command demo |
 
-Local loop (needs `protoc` on `PATH`): `make proto`, `make redis`, `go run ./cmd/check`, plus `run-origin` / `run-proxy` / `run-dashboard` / `loadtest`. Tests use **miniredis**, not a container. Do not run `make redis` on `:6379` in the same session as Compose.
+Local loop (needs `protoc` on `PATH`): `make proto`, `make redis`, `go run ./cmd/check`, plus `run-origin` / `run-proxy` / `run-dashboard` / `loadtest` (vegeta v12.13.0). Tests use **miniredis**, not a container. Do not run `make redis` on `:6379` in the same session as Compose.
 
 ## Correctness
 

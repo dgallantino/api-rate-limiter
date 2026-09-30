@@ -17,8 +17,13 @@ RUN mkdir -p internal/gen && protoc \
 RUN go build -o /out/check ./cmd/check \
 	&& go build -o /out/proxy ./cmd/proxy \
 	&& go build -o /out/dashboard ./cmd/dashboard \
-	&& go build -o /out/loadtest ./cmd/loadtest \
 	&& go build -o /out/origin ./cmd/origin
+
+FROM golang:1.26-alpine AS vegeta-build
+ARG VEGETA_VERSION=v12.13.0
+RUN apk add --no-cache git
+ENV CGO_ENABLED=0
+RUN go install github.com/tsenart/vegeta/v12@${VEGETA_VERSION}
 
 FROM alpine:3.21 AS runtime
 RUN apk add --no-cache ca-certificates wget \
@@ -42,9 +47,9 @@ COPY configs/compose/dashboard.yaml /etc/api-rate-limiter/dashboard.yaml
 EXPOSE 8081
 CMD ["dashboard", "-config", "/etc/api-rate-limiter/dashboard.yaml"]
 
-FROM runtime AS loadtest
-COPY --from=build /out/loadtest /usr/local/bin/loadtest
-CMD ["loadtest"]
+FROM runtime AS vegeta
+COPY --from=vegeta-build /go/bin/vegeta /usr/local/bin/vegeta
+CMD ["vegeta"]
 
 FROM runtime AS origin
 COPY --from=build /out/origin /usr/local/bin/origin

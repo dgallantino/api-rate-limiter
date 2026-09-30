@@ -382,7 +382,7 @@ Done when:
 - [ ] Demo `make compose-up` still works; `make test` passes; `cd bench && go build ./...` succeeds.
 
 #### PR 2: vegeta replaces `cmd/loadtest`
-Branch `dev/bench/vegeta` · ~250–350 lines (~190 of them deletions) · Depends on: PR 1 · **Status: todo**
+Branch `dev/bench/vegeta` · ~250–350 lines (~190 of them deletions) · Depends on: PR 1 · **Status: in review**
 
 Scope (all in this one PR):
 - `deploy/Dockerfile`: replace the `loadtest` target with a `vegeta` target; `ARG VEGETA_VERSION=v12.13.0`, installed via `go install github.com/tsenart/vegeta/v12@${VEGETA_VERSION}`.

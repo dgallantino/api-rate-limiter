@@ -99,3 +99,14 @@ services:
       interval: 2s
       timeout: 2s
       retries: 15
+
+  vegeta:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: vegeta
+    network_mode: host
+    cpuset: "${BENCH_CPUS_LOADGEN:-0,1,6,7}"
+    volumes:
+      - ./results:/results
+    command: ["sleep", "infinity"]
