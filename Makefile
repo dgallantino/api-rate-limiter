@@ -3,6 +3,7 @@ MODULE := github.com/dgallantino/api-rate-limiter
 CONTAINER := $(shell command -v podman || command -v docker)
 REDIS_NAME := rl-redis
 COMPOSE ?= $(shell docker info >/dev/null 2>&1 && echo docker compose || echo podman compose)
+VEGETA_VERSION := v12.13.0
 .PHONY: proto proto-go build test test-race run run-proxy run-origin run-origin-limited run-dashboard loadtest redis redis-stop redis-start compose-up compose-down compose-loadtest compose-redis-stop compose-redis-start bench-up bench-down
 
 proto: proto-go
@@ -20,7 +21,6 @@ build: proto-go
 	go build -o bin/proxy ./cmd/proxy
 	go build -o bin/dashboard ./cmd/dashboard
 	go build -o bin/origin ./cmd/origin
-	go build -o bin/loadtest ./cmd/loadtest
 
 test: proto-go
 	go test ./...
@@ -44,7 +44,7 @@ run-dashboard: proto-go
 	go run ./cmd/dashboard -config configs/dashboard.example.yaml
 
 loadtest:
-	go run ./cmd/loadtest
+	go run github.com/tsenart/vegeta/v12@$(VEGETA_VERSION) attack -rate=20/s -duration=30s -targets=configs/vegeta-targets.example.txt | go run github.com/tsenart/vegeta/v12@$(VEGETA_VERSION) report
 
 # Real Redis for a manual cmd/check run. Tests use miniredis (no container).
 redis:

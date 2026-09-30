@@ -1,0 +1,5 @@
+GET http://proxy:8080/work
+X-API-Key: free:demo
+
+GET http://proxy:8080/work
+X-API-Key: pro:demo

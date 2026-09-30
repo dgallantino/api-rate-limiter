@@ -106,9 +106,11 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile
-      target: loadtest
+      target: vegeta
     profiles: ["load"]
     depends_on:
       proxy:
         condition: service_started
-    command: ["loadtest", "-url", "http://proxy:8080/work"]
+    volumes:
+      - ./configs/compose/vegeta-targets.txt:/etc/api-rate-limiter/vegeta-targets.txt:ro
+    command: ["sh", "-c", "vegeta attack -rate=20/s -duration=30s -targets=/etc/api-rate-limiter/vegeta-targets.txt | vegeta report"]
