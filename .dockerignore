@@ -12,3 +12,4 @@ docs
 *.md
 .env
 .env.*
+bench/results/

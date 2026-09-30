@@ -3,7 +3,7 @@ MODULE := github.com/dgallantino/api-rate-limiter
 CONTAINER := $(shell command -v podman || command -v docker)
 REDIS_NAME := rl-redis
 COMPOSE ?= $(shell docker info >/dev/null 2>&1 && echo docker compose || echo podman compose)
-.PHONY: proto proto-go build test test-race run run-proxy run-origin run-origin-limited run-dashboard loadtest redis redis-stop redis-start compose-up compose-down compose-loadtest compose-redis-stop compose-redis-start
+.PHONY: proto proto-go build test test-race run run-proxy run-origin run-origin-limited run-dashboard loadtest redis redis-stop redis-start compose-up compose-down compose-loadtest compose-redis-stop compose-redis-start bench-up bench-down
 
 proto: proto-go
 
@@ -70,3 +70,9 @@ compose-redis-stop:
 
 compose-redis-start:
 	$(COMPOSE) start redis
+
+bench-up:
+	$(COMPOSE) -p api-rate-limiter-bench -f bench/compose.bench.yaml up --build --wait
+
+bench-down:
+	$(COMPOSE) -p api-rate-limiter-bench -f bench/compose.bench.yaml down --remove-orphans

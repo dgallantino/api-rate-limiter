@@ -41,3 +41,6 @@ Thumbs.db
 __debug_bin*
 
 .cursor/*
+
+# Bench artifacts
+bench/results/

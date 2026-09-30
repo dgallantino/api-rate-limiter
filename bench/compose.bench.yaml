@@ -1,0 +1,101 @@
+services:
+  redis:
+    image: redis:7-alpine
+    network_mode: host
+    cpuset: "${BENCH_CPUS_REDIS:-5,11}"
+    command: ["redis-server", "--bind", "127.0.0.1", "--port", "16379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "16379", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+
+  check:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: check
+    network_mode: host
+    cpuset: "${BENCH_CPUS_SUT:-2,3,4,8,9,10}"
+    volumes:
+      - ./configs/check.capacity.yaml:/etc/api-rate-limiter/check.yaml:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:12112/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  origin:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: origin
+    network_mode: host
+    cpuset: "${BENCH_CPUS_SUT:-2,3,4,8,9,10}"
+    command: ["origin", "-addr", "127.0.0.1:18000"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:18000/health"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+
+  origin-limited:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: origin-limited
+    network_mode: host
+    cpuset: "${BENCH_CPUS_SUT:-2,3,4,8,9,10}"
+    environment:
+      CHECK_ADDR: 127.0.0.1:15051
+    command: ["origin", "-limited", "-addr", "127.0.0.1:18001"]
+    depends_on:
+      check:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:18001/health"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  proxy:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: proxy
+    network_mode: host
+    cpuset: "${BENCH_CPUS_SUT:-2,3,4,8,9,10}"
+    volumes:
+      - ./configs/proxy.yaml:/etc/api-rate-limiter/proxy.yaml:ro
+    depends_on:
+      check:
+        condition: service_healthy
+      origin:
+        condition: service_healthy
+    healthcheck:
+      # Keyless request returns 400 without calling Check, so the probe spends no quota.
+      test: ["CMD-SHELL", "wget -S -O /dev/null -T 2 http://127.0.0.1:18090/work 2>&1 | grep -q HTTP/"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    network_mode: host
+    cpuset: "${BENCH_CPUS_REDIS:-5,11}"
+    volumes:
+      - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.listen-address=127.0.0.1:19090
+    depends_on:
+      check:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:19090/-/healthy"]
+      interval: 2s
+      timeout: 2s
+      retries: 15

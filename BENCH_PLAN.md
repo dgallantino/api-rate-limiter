@@ -364,7 +364,7 @@ Line estimates are rough. Status values: `todo`, `in progress`, `in review`, `me
 Done when `make bench` runs `smoke` end-to-end and produces a report.
 
 #### PR 1: bench skeleton
-Branch `dev/bench/skeleton` · ~150–250 lines · Depends on: none · **Status: todo**
+Branch `dev/bench/skeleton` · ~150–250 lines · Depends on: none · **Status: in review**
 
 Scope:
 - `bench/go.mod`; `bench/cmd/bench/main.go` stub that prints usage.
