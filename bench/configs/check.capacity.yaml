@@ -1,0 +1,17 @@
+listen_addr: "127.0.0.1:15051"
+metrics_addr: "127.0.0.1:12112"
+redis:
+  addr: "127.0.0.1:16379"
+default:
+  limit: 10000000
+  window: 1m
+  fail: closed
+prefixes:
+  "pro:":
+    limit: 10000000
+    window: 1m
+    fail: closed
+  "free:":
+    limit: 10000000
+    window: 1m
+    fail: open

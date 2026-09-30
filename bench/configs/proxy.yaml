@@ -1,0 +1,6 @@
+listen_addr: "127.0.0.1:18090"
+origin_url: "http://127.0.0.1:18000"
+check_addr: "127.0.0.1:15051"
+key: "header:X-API-Key"
+cost: 1
+fail: closed
