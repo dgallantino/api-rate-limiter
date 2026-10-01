@@ -85,7 +85,7 @@ What was chosen, why, and what that implies.
 
 ### Engine
 
-`internal/engine/slidingwindow`: embed of `script.lua`, `go-redis` `Eval`.
+`internal/engine`: embed of `script.lua`, `go-redis` `Eval`.
 
 Approximate sliding window (previous window weighted by time remaining, plus current count):
 
@@ -196,7 +196,7 @@ Re-run these if you touch the named area. `make test` / `make test-race`.
 | Claim | Where |
 | --- | --- |
 | N concurrent Checks against limit M admit exactly M (10 runs) | `internal/server/concurrency_test.go` |
-| Redis down is fail-open vs fail-closed; latched down skips Redis | `internal/engine/slidingwindow/limiter_test.go`, `internal/engine/slidingwindow/breaker_test.go`, `internal/server/failover_test.go` |
+| Redis down is fail-open vs fail-closed; latched down skips Redis | `internal/engine/limiter_test.go`, `internal/engine/breaker_test.go`, `internal/server/failover_test.go` |
 | Peek (`cost=0`) does not increment or create a missing key | `limiter_test.go` |
 | Window roll / cost > limit | `limiter_test.go` |
 | Policy lookup: exact key, longest prefix, default; YAML and JSON | `internal/config/config_test.go` |

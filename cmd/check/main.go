@@ -11,7 +11,7 @@ import (
 
 	"github.com/dgallantino/api-rate-limiter/internal/checkhttp"
 	"github.com/dgallantino/api-rate-limiter/internal/config"
-	"github.com/dgallantino/api-rate-limiter/internal/engine/slidingwindow"
+	"github.com/dgallantino/api-rate-limiter/internal/engine"
 	checkv1 "github.com/dgallantino/api-rate-limiter/internal/gen/check/v1"
 	"github.com/dgallantino/api-rate-limiter/internal/server"
 	"github.com/dgallantino/api-rate-limiter/internal/stats"
@@ -79,7 +79,7 @@ func main() {
 	}
 
 	gs := grpc.NewServer()
-	lim := slidingwindow.New(rdb).WithBreaker(rec.RedisUp, func() { rec.SetRedisUp(false) })
+	lim := engine.New(rdb).WithBreaker(rec.RedisUp, func() { rec.SetRedisUp(false) })
 	cs := config.NewStore(cfg)
 	checkv1.RegisterCheckerServer(gs, server.New(cs, lim, rec).WithLogger(slog.Default()))
 	reflection.Register(gs)
