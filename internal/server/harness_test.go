@@ -7,7 +7,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/dgallantino/api-rate-limiter/internal/config"
-	"github.com/dgallantino/api-rate-limiter/internal/engine/slidingwindow"
+	"github.com/dgallantino/api-rate-limiter/internal/engine"
 	checkv1 "github.com/dgallantino/api-rate-limiter/internal/gen/check/v1"
 	"github.com/dgallantino/api-rate-limiter/internal/stats"
 	"github.com/redis/go-redis/v9"
@@ -29,7 +29,7 @@ func startTestServer(t *testing.T, cfg *config.Config) *testEnv {
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	rec := stats.New()
-	lim := slidingwindow.New(rdb).WithBreaker(rec.RedisUp, func() { rec.SetRedisUp(false) })
+	lim := engine.New(rdb).WithBreaker(rec.RedisUp, func() { rec.SetRedisUp(false) })
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
