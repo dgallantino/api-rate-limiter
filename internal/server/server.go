@@ -49,7 +49,7 @@ func (s *Server) Check(ctx context.Context, req *checkv1.CheckRequest) (*checkv1
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "check: %v", err)
 	}
-	s.rec.Observe(req.GetKey(), res.Allowed, res.Remaining, policy.Limit, policy.Fail.String(), res.StoreFailed)
+	s.rec.Observe(req.GetKey(), res.Allowed, res.Remaining, policy.Limit, policy.Fail.String())
 	if !res.Allowed && s.log != nil {
 		s.log.Info("deny",
 			"key", req.GetKey(),

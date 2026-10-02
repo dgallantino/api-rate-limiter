@@ -69,7 +69,7 @@ What was chosen, why, and what that implies.
 
 **Stats are in-process on Check.** Allowed/blocked totals, last-completed 1s RPS bucket, `redis_up`, and an LRU of at most **50** last-seen keys. Per-key rows are not stored in Redis. Restarting Check zeroes Stats.
 
-**`redis_up` is latched down, pinged up.** A store error sets `redis_up` false. While it is false, Check returns the policy fail result and does not call Redis. A later successful Check does **not** flip it back. A background Redis `PING` (~1s) sets it true again. If a Check has already been inside Redis for 50ms, later Checks fail immediately and latch down.
+**Redis breaker lives in the engine; `redis_up` only mirrors it.** `engine.Breaker` is closed, open, or half-open. Closed: every Check calls Redis. A store error, or one Check already inside Redis for 50ms, opens it. Open: Check returns the policy fail result and does not call Redis. While open, a background Redis `PING` (~1s, `Breaker.Watch`) moves it to half-open on success; a failed `PING` changes nothing. Half-open: exactly one real Check probes Redis and the rest get the fail result. A probe success closes the breaker; a probe failure, or a probe inside Redis for 50ms, reopens it. Results from Checks that started before a state change are ignored. The breaker reports up/down flips to `stats.Recorder.SetRedisUp`; Stats never decides whether Redis is called.
 
 **Prometheus lives only on Check.** Side HTTP listener (`metrics_addr`, demo **`:2112`**): `/metrics` and `/healthz`. Custom registry, three series, no per-key labels, no default Go collectors. Stats and metrics share `stats.Recorder.Observe`. Proxy, dashboard, and adapters do not export metrics.
 
@@ -162,7 +162,7 @@ Go images are Alpine; proto is generated in the build. `.dockerignore` excludes 
 
 ## Failure behavior
 
-**Redis unreachable (Check layer).** Policy `fail: open` → `allowed=true`, remaining and retry 0. `fail: closed` → `allowed=false`, remaining and retry 0. Dashboard `redis_up` goes false within about a second (PING plus store-error latch). Counters may reset when Redis comes back.
+**Redis unreachable (Check layer).** Policy `fail: open` → `allowed=true`, remaining and retry 0. `fail: closed` → `allowed=false`, remaining and retry 0. Dashboard `redis_up` goes false on the first Check that hits the store error, and true again after Redis answers `PING` and the next Check probes it successfully. With no Check traffic it does not move. Counters may reset when Redis comes back.
 
 **Check unreachable (adapter layer).** Adapter `fail: open` → origin runs. `fail: closed` (demo default) → 429 with remaining 0 and no `Retry-After`. This is not the Compose kill-Redis demo; killing Check is not a required demo step.
 
@@ -196,12 +196,12 @@ Re-run these if you touch the named area. `make test` / `make test-race`.
 | Claim | Where |
 | --- | --- |
 | N concurrent Checks against limit M admit exactly M (10 runs) | `internal/server/concurrency_test.go` |
-| Redis down is fail-open vs fail-closed; latched down skips Redis | `internal/engine/limiter_test.go`, `internal/engine/breaker_test.go`, `internal/server/failover_test.go` |
+| Redis down is fail-open vs fail-closed; open breaker skips Redis; half-open single probe closes or reopens | `internal/engine/limiter_test.go`, `internal/engine/breaker_test.go`, `internal/server/failover_test.go` |
 | Peek (`cost=0`) does not increment or create a missing key | `limiter_test.go` |
 | Window roll / cost > limit | `limiter_test.go` |
 | Policy lookup: exact key, longest prefix, default; YAML and JSON | `internal/config/config_test.go` |
 | `SetLimit` updates the next Check and reloads from the file | `internal/config/config_test.go`, `internal/server/server_test.go` |
-| Stats counts, cap 50, store-fail latches `redis_up` | `internal/stats`, `internal/server/stats_test.go` |
+| Stats counts, cap 50; store failure opens the breaker and `redis_up` follows | `internal/stats`, `internal/engine/breaker_test.go`, `internal/server/stats_test.go` |
 | Three Prometheus series only; `/healthz` ignores Redis | `internal/checkhttp/handler_test.go` |
 | Adapter allow / 429 / Check-down fail-open\|closed | `pkg/httplimit/middleware_test.go` |
 | Proxy deny never hits origin | `cmd/proxy/handler_test.go` |

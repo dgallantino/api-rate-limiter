@@ -67,11 +67,8 @@ func newRecorder(now func() time.Time) *Recorder {
 	return r
 }
 
-func (r *Recorder) Observe(key string, allowed bool, remaining, limit int64, fail string, storeFailed bool) {
+func (r *Recorder) Observe(key string, allowed bool, remaining, limit int64, fail string) {
 	r.reqTotal.Inc()
-	if storeFailed {
-		r.SetRedisUp(false)
-	}
 	if allowed {
 		r.allowed.Add(1)
 	} else {
@@ -91,16 +88,12 @@ func (r *Recorder) Observe(key string, allowed bool, remaining, limit int64, fai
 }
 
 // SetOnRedisChange registers a hook fired only when redis_up actually flips.
-// Set it once before WatchRedis / Check traffic starts.
+// Set it once before Check traffic starts.
 func (r *Recorder) SetOnRedisChange(fn func(up bool)) {
 	r.onRedisChange = fn
 }
 
-// RedisUp is the latched gauge. Check skips Redis while this is false.
-func (r *Recorder) RedisUp() bool {
-	return r.redisUp.Load()
-}
-
+// SetRedisUp records the engine breaker's state. It does not change behaviour.
 func (r *Recorder) SetRedisUp(up bool) {
 	if up {
 		r.redisGauge.Set(1)

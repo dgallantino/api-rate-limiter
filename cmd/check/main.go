@@ -35,7 +35,18 @@ func main() {
 		os.Exit(1)
 	}
 
-	rdb := redis.NewClient(&redis.Options{Addr: cfg.Redis.Addr})
+	// No retries: EVAL is not idempotent, and a retry hides the error from the breaker.
+	// 100ms is above a healthy eval and far under the go-redis defaults, so a hung
+	// command frees its pool connection. DialerRetries must be 1, not 0: 0 means 5.
+	rdb := redis.NewClient(&redis.Options{
+		Addr:          cfg.Redis.Addr,
+		DialTimeout:   100 * time.Millisecond,
+		ReadTimeout:   100 * time.Millisecond,
+		WriteTimeout:  100 * time.Millisecond,
+		PoolTimeout:   100 * time.Millisecond,
+		MaxRetries:    -1,
+		DialerRetries: 1,
+	})
 	defer rdb.Close()
 
 	rec := stats.New()
@@ -48,9 +59,10 @@ func main() {
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go stats.WatchRedis(ctx, func(c context.Context) error {
+	br := engine.NewBreaker(rec.SetRedisUp)
+	go br.Watch(ctx, func(c context.Context) error {
 		return rdb.Ping(c).Err()
-	}, rec, time.Second)
+	}, time.Second)
 
 	if cfg.MetricsAddr != "" {
 		reg := prometheus.NewRegistry()
@@ -79,7 +91,7 @@ func main() {
 	}
 
 	gs := grpc.NewServer()
-	lim := engine.New(rdb).WithBreaker(rec.RedisUp, func() { rec.SetRedisUp(false) })
+	lim := engine.New(rdb).WithBreaker(br)
 	cs := config.NewStore(cfg)
 	checkv1.RegisterCheckerServer(gs, server.New(cs, lim, rec).WithLogger(slog.Default()))
 	reflection.Register(gs)

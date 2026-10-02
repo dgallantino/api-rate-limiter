@@ -4,7 +4,6 @@ import (
 	"context"
 	"embed"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/dgallantino/api-rate-limiter/internal/config"
@@ -12,7 +11,7 @@ import (
 )
 
 // shedAfter is how long one Check may sit inside Redis before later Checks
-// stop waiting and latch Redis down. Healthy evals are far under this.
+// stop waiting and open the breaker. Healthy evals are far under this.
 const shedAfter = 50 * time.Millisecond
 
 //go:embed script.lua
@@ -21,78 +20,40 @@ var luaFS embed.FS
 var script = redis.NewScript(mustReadLua())
 
 type Limiter struct {
-	rdb      redis.Cmdable
-	now      func() time.Time
-	redisUp  func() bool
-	markDown func()
-
-	mu       sync.Mutex
-	inflight int
-	oldest   time.Time
+	rdb redis.Cmdable
+	now func() time.Time
+	br  *Breaker
 }
 
 func New(rdb redis.Cmdable) *Limiter {
 	return &Limiter{rdb: rdb, now: time.Now}
 }
 
-// WithBreaker skips Redis while up is false. One Check already inside Redis
-// for shedAfter makes later Checks fail immediately and calls markDown.
-// A successful Check does not call markDown; the PING loop raises the latch.
-func (l *Limiter) WithBreaker(up func() bool, markDown func()) *Limiter {
-	l.redisUp = up
-	l.markDown = markDown
+// WithBreaker skips Redis while b is open or half-open with its probe in flight.
+func (l *Limiter) WithBreaker(b *Breaker) *Limiter {
+	l.br = b
 	return l
 }
 
 var _ Checker = (*Limiter)(nil)
 
 func (l *Limiter) Check(ctx context.Context, key string, cost int64, policy config.Policy) (Result, error) {
-	if l.latchedDown() {
-		return storeDown(policy), nil
-	}
 	now := l.now()
-	if l.redisUp != nil {
-		if !l.acquire(now) {
-			l.trip()
+	var t ticket
+	if l.br != nil {
+		var ok bool
+		if t, ok = l.br.enter(now); !ok {
 			return storeDown(policy), nil
 		}
-		defer l.release()
 	}
 	res, err := l.eval(ctx, key, cost, policy, now)
+	if l.br != nil {
+		l.br.exit(t, err == nil)
+	}
 	if err != nil {
-		l.trip()
 		return storeDown(policy), nil
 	}
 	return res, nil
-}
-
-func (l *Limiter) latchedDown() bool {
-	return l.redisUp != nil && !l.redisUp()
-}
-
-func (l *Limiter) acquire(now time.Time) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.inflight > 0 && now.Sub(l.oldest) >= shedAfter {
-		return false
-	}
-	if l.inflight == 0 {
-		l.oldest = now
-	}
-	l.inflight++
-	return true
-}
-
-func (l *Limiter) release() {
-	l.mu.Lock()
-	l.inflight--
-	l.mu.Unlock()
-}
-
-func (l *Limiter) trip() {
-	if l.markDown != nil {
-		l.markDown()
-	}
 }
 
 func storeDown(policy config.Policy) Result {
