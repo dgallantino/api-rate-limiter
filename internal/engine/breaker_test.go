@@ -329,12 +329,48 @@ func waitPings(t *testing.T, pings *atomic.Int64, n int64) {
 	}
 }
 
+// TestYoungerInFlightDoesNotShed guards that shed age is the oldest Check that
+// has not returned. A fast Check that already returned must not make a younger
+// in-flight Check look shedAfter old, and refusing a Check must not mark Redis
+// down. Otherwise a healthy overlap past 50ms latches the breaker and fail-open
+// stops enforcing the quota.
+func TestYoungerInFlightDoesNotShed(t *testing.T) {
+	var f flips
+	b := NewBreaker(f.add)
+	t0 := time.Now()
+
+	a, ok := b.enter(t0)
+	if !ok {
+		t.Fatal("A refused")
+	}
+	if _, ok := b.enter(t0.Add(10 * time.Millisecond)); !ok {
+		t.Fatal("B refused")
+	}
+	b.exit(a, true)
+
+	if _, ok := b.enter(t0.Add(50 * time.Millisecond)); !ok {
+		t.Fatal("C refused while the oldest live Check is 40ms old")
+	}
+	if stateOf(b) != closed {
+		t.Fatalf("state=%v want closed", stateOf(b))
+	}
+	f.want(t)
+
+	if _, ok := b.enter(t0.Add(10*time.Millisecond + shedAfter)); ok {
+		t.Fatal("D admitted while the oldest live Check is shedAfter old")
+	}
+	if stateOf(b) != closed {
+		t.Fatalf("shed state=%v want closed", stateOf(b))
+	}
+	f.want(t)
+}
+
 // TestHangShedsLaterChecks guards hang detection against a TCP server that
 // accepts and never replies: once one Check has sat in Redis for shedAfter,
-// the next Check returns the fail-mode answer immediately, opens the breaker,
-// and no further Check dials. When the hung Check finally fails, that late
-// result does not change state or report a second down.
-// A hung Redis produces no error to trip on, so time in flight is the signal.
+// the next Check returns the fail-mode answer immediately and does not dial.
+// The shed itself leaves the breaker closed. When the hung Check's context is
+// cancelled, that store error opens the breaker and reports down once.
+// A hang is not a store error until the call returns.
 func TestHangShedsLaterChecks(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -403,16 +439,16 @@ func TestHangShedsLaterChecks(t *testing.T) {
 	if err != nil || r.Allowed || !r.StoreFailed {
 		t.Fatalf("shed: %+v %v", r, err)
 	}
-	if stateOf(b) != open {
-		t.Fatalf("shed must open the breaker, state=%v", stateOf(b))
+	if stateOf(b) != closed {
+		t.Fatalf("shed must leave the breaker closed, state=%v", stateOf(b))
 	}
-	f.want(t, false)
+	f.want(t)
 	time.Sleep(30 * time.Millisecond)
 	mu.Lock()
 	n := len(conns)
 	mu.Unlock()
 	if n != 1 {
-		t.Fatalf("dials=%d, open breaker must not dial", n)
+		t.Fatalf("dials=%d, shed checks must not dial", n)
 	}
 
 	cancel()
@@ -428,7 +464,7 @@ func TestHangShedsLaterChecks(t *testing.T) {
 		t.Fatal("hung check did not return")
 	}
 	if stateOf(b) != open {
-		t.Fatal("late failure of the hung check must not change state")
+		t.Fatal("hung check store error must open the breaker")
 	}
 	f.want(t, false)
 }

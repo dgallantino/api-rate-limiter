@@ -35,18 +35,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// No retries: EVAL is not idempotent, and a retry hides the error from the breaker.
-	// 100ms is above a healthy eval and far under the go-redis defaults, so a hung
-	// command frees its pool connection. DialerRetries must be 1, not 0: 0 means 5.
-	rdb := redis.NewClient(&redis.Options{
-		Addr:          cfg.Redis.Addr,
-		DialTimeout:   100 * time.Millisecond,
-		ReadTimeout:   100 * time.Millisecond,
-		WriteTimeout:  100 * time.Millisecond,
-		PoolTimeout:   100 * time.Millisecond,
-		MaxRetries:    -1,
-		DialerRetries: 1,
-	})
+	rdb := redis.NewClient(&redis.Options{Addr: cfg.Redis.Addr})
 	defer rdb.Close()
 
 	rec := stats.New()

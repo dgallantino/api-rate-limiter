@@ -14,24 +14,24 @@ const (
 	halfOpen
 )
 
-// Breaker gates the Limiter's Redis calls. Real Checks open it (store error,
-// or one Check inside Redis for shedAfter) and close it (the single half-open
-// probe succeeds). Watch only moves open to half-open; a PING never closes or
-// opens it.
+// Breaker gates the Limiter's Redis calls. A store error opens it. One Check
+// inside Redis for shedAfter sheds later Checks and does not open it. The
+// single half-open probe closes it on success. Watch only moves open to
+// half-open; a PING never closes or opens it.
 type Breaker struct {
 	onChange func(up bool)
 
-	mu       sync.Mutex
-	state    breakerState
-	gen      uint64
-	inflight int
-	oldest   time.Time
+	mu    sync.Mutex
+	state breakerState
+	gen   uint64
+	live  []time.Time
 }
 
-// ticket ties a Check's result to the breaker generation it entered under.
-// Results from an older generation are ignored.
+// ticket ties a Check's result to the generation and start time it entered
+// under. Results from an older generation are ignored.
 type ticket struct {
-	gen uint64
+	gen   uint64
+	start time.Time
 }
 
 // NewBreaker starts closed. onChange fires on up/down flips only and runs
@@ -47,26 +47,23 @@ func (b *Breaker) enter(now time.Time) (ticket, bool) {
 	case open:
 		return ticket{}, false
 	case halfOpen:
-		if b.inflight == 0 {
-			b.inflight = 1
-			b.oldest = now
-			return ticket{gen: b.gen}, true
+		if len(b.live) == 0 {
+			return b.admitLocked(now), true
 		}
-		if now.Sub(b.oldest) >= shedAfter {
+		if oldest, ok := b.oldestLive(); ok && now.Sub(oldest) >= shedAfter {
 			b.setLocked(open)
 		}
 		return ticket{}, false
 	}
-	if b.inflight > 0 && now.Sub(b.oldest) >= shedAfter {
-		b.setLocked(open)
-		b.notifyLocked(false)
+	if oldest, ok := b.oldestLive(); ok && now.Sub(oldest) >= shedAfter {
 		return ticket{}, false
 	}
-	if b.inflight == 0 {
-		b.oldest = now
-	}
-	b.inflight++
-	return ticket{gen: b.gen}, true
+	return b.admitLocked(now), true
+}
+
+func (b *Breaker) admitLocked(now time.Time) ticket {
+	b.live = append(b.live, now)
+	return ticket{gen: b.gen, start: now}
 }
 
 func (b *Breaker) exit(t ticket, ok bool) {
@@ -75,7 +72,7 @@ func (b *Breaker) exit(t ticket, ok bool) {
 	if t.gen != b.gen {
 		return
 	}
-	b.inflight--
+	b.dropLive(t.start)
 	switch b.state {
 	case closed:
 		if !ok {
@@ -135,10 +132,32 @@ func (b *Breaker) nudge() {
 	}
 }
 
+func (b *Breaker) oldestLive() (time.Time, bool) {
+	if len(b.live) == 0 {
+		return time.Time{}, false
+	}
+	oldest := b.live[0]
+	for _, start := range b.live[1:] {
+		if start.Before(oldest) {
+			oldest = start
+		}
+	}
+	return oldest, true
+}
+
+func (b *Breaker) dropLive(start time.Time) {
+	for i, s := range b.live {
+		if s.Equal(start) {
+			b.live = append(b.live[:i], b.live[i+1:]...)
+			return
+		}
+	}
+}
+
 func (b *Breaker) setLocked(s breakerState) {
 	b.state = s
 	b.gen++
-	b.inflight = 0
+	b.live = nil
 }
 
 func (b *Breaker) notifyLocked(up bool) {
