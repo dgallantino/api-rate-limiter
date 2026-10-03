@@ -29,7 +29,7 @@ func startTestServer(t *testing.T, cfg *config.Config) *testEnv {
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	rec := stats.New()
-	lim := engine.New(rdb).WithBreaker(rec.RedisUp, func() { rec.SetRedisUp(false) })
+	lim := engine.New(rdb).WithBreaker(engine.NewBreaker(rec.SetRedisUp))
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)

@@ -1,8 +1,6 @@
 package stats
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -11,10 +9,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
+// TestObserveCountsAndKeys guards that Observe counts allows and blocks,
+// records per-key used/remaining/limit/fail most-recent first, and that
+// redis_up starts true so the dashboard is not red before any traffic.
 func TestObserveCountsAndKeys(t *testing.T) {
 	rec := New()
-	rec.Observe("free:a", true, 19, 20, "open", false)
-	rec.Observe("pro:b", false, 0, 500, "closed", false)
+	rec.Observe("free:a", true, 19, 20, "open")
+	rec.Observe("pro:b", false, 0, 500, "closed")
 	snap := rec.Snapshot()
 	if snap.Allowed != 1 || snap.Blocked != 1 {
 		t.Fatalf("totals: %+v", snap)
@@ -33,25 +34,13 @@ func TestObserveCountsAndKeys(t *testing.T) {
 	}
 }
 
-func TestStoreFailedLatchesRedisDown(t *testing.T) {
-	rec := New()
-	rec.Observe("k", true, 0, 20, "open", true)
-	if rec.Snapshot().RedisUp {
-		t.Fatal("expected redis_up false")
-	}
-	if rec.RedisUp() {
-		t.Fatal("expected redis_up false")
-	}
-	rec.Observe("k", true, 19, 20, "open", false)
-	if rec.RedisUp() {
-		t.Fatal("successful check must not raise redis_up")
-	}
-}
-
+// TestCap50EvictsOldest guards that the per-key table never exceeds MaxKeys
+// and evicts the least recently observed key, so a key-spraying client cannot
+// grow Check's memory without bound.
 func TestCap50EvictsOldest(t *testing.T) {
 	rec := New()
 	for i := 0; i < MaxKeys+1; i++ {
-		rec.Observe(fmt.Sprintf("k%d", i), true, 1, 10, "closed", false)
+		rec.Observe(fmt.Sprintf("k%d", i), true, 1, 10, "closed")
 	}
 	snap := rec.Snapshot()
 	if len(snap.Keys) != MaxKeys {
@@ -64,11 +53,14 @@ func TestCap50EvictsOldest(t *testing.T) {
 	}
 }
 
+// TestRPSLastCompletedBucket guards that RPS reports the last completed
+// one-second bucket, not the partial current one, so the dashboard does not
+// show a number that ramps up from zero every second.
 func TestRPSLastCompletedBucket(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
 	rec := newRecorder(func() time.Time { return now })
-	rec.Observe("k", true, 1, 10, "closed", false)
-	rec.Observe("k", false, 0, 10, "closed", false)
+	rec.Observe("k", true, 1, 10, "closed")
+	rec.Observe("k", false, 0, 10, "closed")
 	if rec.Snapshot().RPS != 0 {
 		t.Fatal("current bucket is not yet complete")
 	}
@@ -78,15 +70,20 @@ func TestRPSLastCompletedBucket(t *testing.T) {
 	}
 }
 
+// TestPrometheusObserveAndRedisGauge guards that Observe feeds the requests
+// and blocked counters, that SetRedisUp drives the redis_up gauge, and that
+// the registry holds exactly three families. Observe deliberately has no
+// effect on the gauge: only the engine breaker reports Redis state.
 func TestPrometheusObserveAndRedisGauge(t *testing.T) {
 	rec := New()
 	reg := prometheus.NewRegistry()
 	if err := rec.Register(reg); err != nil {
 		t.Fatal(err)
 	}
-	rec.Observe("a", true, 1, 10, "closed", false)
-	rec.Observe("b", false, 0, 10, "closed", false)
-	rec.Observe("c", true, 0, 10, "open", true)
+	rec.Observe("a", true, 1, 10, "closed")
+	rec.Observe("b", false, 0, 10, "closed")
+	rec.Observe("c", true, 0, 10, "open")
+	rec.SetRedisUp(false)
 	if got := testutil.ToFloat64(rec.reqTotal); got != 3 {
 		t.Fatalf("requests_total=%v", got)
 	}
@@ -117,44 +114,4 @@ func TestOnRedisChangeTransitionsOnly(t *testing.T) {
 	if len(flips) != 2 || flips[0] || !flips[1] {
 		t.Fatalf("flips=%v", flips)
 	}
-}
-
-func TestWatchRedisPing(t *testing.T) {
-	rec := New()
-	rec.SetRedisUp(false)
-	ctx, cancel := context.WithCancel(context.Background())
-	pings := make(chan struct{}, 4)
-	go WatchRedis(ctx, func(context.Context) error {
-		select {
-		case pings <- struct{}{}:
-		default:
-		}
-		return nil
-	}, rec, 20*time.Millisecond)
-	select {
-	case <-pings:
-	case <-time.After(time.Second):
-		t.Fatal("expected ping")
-	}
-	waitRedis(t, rec, true)
-	cancel()
-
-	ctx2, cancel2 := context.WithCancel(context.Background())
-	defer cancel2()
-	go WatchRedis(ctx2, func(context.Context) error {
-		return errors.New("down")
-	}, rec, 20*time.Millisecond)
-	waitRedis(t, rec, false)
-}
-
-func waitRedis(t *testing.T, rec *Recorder, up bool) {
-	t.Helper()
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
-		if rec.Snapshot().RedisUp == up {
-			return
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	t.Fatalf("redis_up=%v want %v", rec.Snapshot().RedisUp, up)
 }

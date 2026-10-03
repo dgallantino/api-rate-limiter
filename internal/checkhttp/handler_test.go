@@ -11,6 +11,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+// TestMetricsAndHealthz guards that /healthz stays 200 while redis_up is 0,
+// and that /metrics exposes exactly the three Check series with no default Go
+// collectors. Health must not follow Redis, or Compose would restart Check
+// during the kill-Redis demo instead of letting it serve fail-open/closed.
 func TestMetricsAndHealthz(t *testing.T) {
 	rec := stats.New()
 	reg := prometheus.NewRegistry()
@@ -19,8 +23,8 @@ func TestMetricsAndHealthz(t *testing.T) {
 	}
 	h := Handler(reg)
 
-	rec.Observe("free:a", true, 19, 20, "open", false)
-	rec.Observe("pro:b", false, 0, 500, "closed", false)
+	rec.Observe("free:a", true, 19, 20, "open")
+	rec.Observe("pro:b", false, 0, 500, "closed")
 	rec.SetRedisUp(false)
 
 	health := httptest.NewRecorder()
