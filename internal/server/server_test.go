@@ -43,6 +43,26 @@ func TestCheckInvalidArgument(t *testing.T) {
 	}
 }
 
+func TestCheckCostExceedsLimit(t *testing.T) {
+	c := &calls{}
+	s := New(config.NewStore(&config.Config{Default: config.Policy{Limit: 3, Window: time.Minute}}), c, nil)
+	ctx := context.Background()
+	_, err := s.Check(ctx, &checkv1.CheckRequest{Key: "k", Cost: 10})
+	if status.Code(err) != codes.InvalidArgument || c.n != 0 {
+		t.Fatalf("cost exceeds limit: %v calls=%d", err, c.n)
+	}
+	if _, err := s.Check(ctx, &checkv1.CheckRequest{Key: "k", Cost: 3}); err != nil || c.n != 1 {
+		t.Fatalf("cost at limit: %v calls=%d", err, c.n)
+	}
+}
+
+type calls struct{ n int }
+
+func (c *calls) Check(context.Context, string, int64, config.Policy) (engine.Result, error) {
+	c.n++
+	return engine.Result{Allowed: true}, nil
+}
+
 func TestSetLimitThenCheck(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "check.yaml")

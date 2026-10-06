@@ -105,7 +105,7 @@ Store errors become `engine.Result{StoreFailed: true}` plus allow or deny from `
 
 `Check(key, cost) → (allowed, remaining, retry_after_ms)`:
 
-- Empty `key` or `cost < 0` → `InvalidArgument`.
+- Empty `key`, `cost < 0`, or `cost` greater than the policy limit → `InvalidArgument`. A cost above the limit does not call the checker.
 - Policy from `config.Lookup`: exact `keys` entry, else longest matching `prefix`, else `default`.
 - Denies log JSON at info (`key`, `remaining`, `retry_after_ms`, `fail`). Allows are not logged (load-test would drown stdout).
 - Redis down/up logs on `redis_up` transitions only.
@@ -124,6 +124,7 @@ Shared deny contract:
 - `X-RateLimit-Remaining`
 - `Retry-After` in seconds, `ceil(retry_after_ms / 1000)`, omitted when that is 0
 - Missing key or Check `InvalidArgument` → **400** `{"error":"bad_request"}`
+- Any other Check error, while the caller is still connected and adapter fail is closed → **503** `{"error":"unavailable"}` with `Retry-After: 1`
 - Allowed responses get `X-RateLimit-Remaining` and then the origin handler runs
 
 `pkg/httplimit`: `func(http.Handler) http.Handler`. Default key header `X-API-Key`. Unset `Cost` is 0 (peek); callers usually set `Cost: 1` or a `CostFunc`. Adapter `Fail` defaults to **closed** when the Check RPC fails (distinct from Redis fail mode). `Dial` is h2c.
@@ -164,7 +165,7 @@ Go images are Alpine; proto is generated in the build. `.dockerignore` excludes 
 
 **Redis unreachable (Check layer).** Policy `fail: open` → `allowed=true`, remaining and retry 0. `fail: closed` → `allowed=false`, remaining and retry 0. Dashboard `redis_up` goes false on the first Check that hits the store error, and true again after Redis answers `PING` and the next Check probes it successfully. With no Check traffic it does not move. Counters may reset when Redis comes back.
 
-**Check unreachable (adapter layer).** Adapter `fail: open` → origin runs. `fail: closed` (demo default) → 429 with remaining 0 and no `Retry-After`. This is not the Compose kill-Redis demo; killing Check is not a required demo step.
+**Check unreachable (adapter layer).** Adapter `fail: open` → origin runs. `fail: closed` (demo default), while the caller is still connected → 503 with `Retry-After: 1`. A disconnected caller does not get that response. This is not the Compose kill-Redis demo; killing Check is not a required demo step.
 
 **`/healthz` after Redis death.** Still 200. Do not wire Check health to Redis if you want the fail-mode demo.
 

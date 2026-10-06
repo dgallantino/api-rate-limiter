@@ -30,3 +30,11 @@ func writeBadRequest(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusBadRequest)
 	_, _ = w.Write([]byte(`{"error":"bad_request"}`))
 }
+
+func writeUnavailable(w http.ResponseWriter) {
+	h := w.Header()
+	h.Set("Content-Type", "application/json")
+	h.Set("Retry-After", "1")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	_, _ = w.Write([]byte(`{"error":"unavailable"}`))
+}

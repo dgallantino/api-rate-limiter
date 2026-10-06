@@ -45,6 +45,9 @@ func (s *Server) Check(ctx context.Context, req *checkv1.CheckRequest) (*checkv1
 		return nil, status.Error(codes.InvalidArgument, "cost must be >= 0")
 	}
 	policy := s.store.Lookup(req.GetKey())
+	if req.GetCost() > policy.Limit {
+		return nil, status.Error(codes.InvalidArgument, "cost exceeds limit")
+	}
 	res, err := s.checker.Check(ctx, req.GetKey(), req.GetCost(), policy)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "check: %v", err)
