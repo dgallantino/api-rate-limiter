@@ -59,7 +59,9 @@ func Middleware(opts Options) func(http.Handler) http.Handler {
 					next.ServeHTTP(w, r)
 					return
 				}
-				WriteDeny(w, 0, 0)
+				if r.Context().Err() == nil {
+					writeUnavailable(w)
+				}
 				return
 			}
 			if !res.Allowed {

@@ -114,11 +114,36 @@ func TestFailClosedOnCheckError(t *testing.T) {
 		Fail: FailClosed,
 	}, &called)
 	rec := hit(t, h, http.Header{"X-Api-Key": []string{"k"}})
-	if rec.Code != http.StatusTooManyRequests || called {
+	if rec.Code != http.StatusServiceUnavailable || called {
 		t.Fatalf("fail-closed: code=%d called=%v", rec.Code, called)
 	}
-	if rec.Header().Get("Retry-After") != "" {
-		t.Fatalf("retry-after should be omitted: %q", rec.Header().Get("Retry-After"))
+	if rec.Header().Get("Retry-After") != "1" {
+		t.Fatalf("retry-after: %q", rec.Header().Get("Retry-After"))
+	}
+	body, _ := io.ReadAll(rec.Body)
+	if strings.TrimSpace(string(body)) != `{"error":"unavailable"}` {
+		t.Fatalf("body: %s", body)
+	}
+}
+
+func TestFailClosedSkips503WhenCallerGone(t *testing.T) {
+	var called bool
+	h := wrap(Options{
+		Client: stubClient{func(context.Context, *checkv1.CheckRequest) (*checkv1.CheckResponse, error) {
+			return nil, errors.New("check down")
+		}},
+		Cost: 1,
+		Fail: FailClosed,
+	}, &called)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("X-Api-Key", "k")
+	ctx, cancel := context.WithCancel(req.Context())
+	cancel()
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if called || rec.Header().Get("Retry-After") != "" || rec.Body.Len() != 0 {
+		t.Fatalf("caller gone: called=%v retry=%q body=%q", called, rec.Header().Get("Retry-After"), rec.Body.String())
 	}
 }
 
