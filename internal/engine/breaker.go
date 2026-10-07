@@ -66,6 +66,17 @@ func (b *Breaker) admitLocked(now time.Time) ticket {
 	return ticket{gen: b.gen, start: now}
 }
 
+// release drops the in-flight Check for this generation and leaves the state
+// alone. A bad script result is not a store failure and not a successful eval.
+func (b *Breaker) release(t ticket) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if t.gen != b.gen {
+		return
+	}
+	b.dropLive(t.start)
+}
+
 func (b *Breaker) exit(t ticket, ok bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()

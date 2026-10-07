@@ -3,12 +3,17 @@ package engine
 import (
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/dgallantino/api-rate-limiter/internal/config"
 	"github.com/redis/go-redis/v9"
 )
+
+// errBadResult is a script reply this process cannot use. Redis answered, so
+// it is not a store failure and must not open the breaker.
+var errBadResult = errors.New("engine: bad script result")
 
 // shedAfter is how long one Check may sit inside Redis before later Checks
 // stop waiting and open the breaker. Healthy evals are far under this.
@@ -47,6 +52,12 @@ func (l *Limiter) Check(ctx context.Context, key string, cost int64, policy conf
 		}
 	}
 	res, err := l.eval(ctx, key, cost, policy, now)
+	if errors.Is(err, errBadResult) {
+		if l.br != nil {
+			l.br.release(t)
+		}
+		return Result{}, err
+	}
 	if l.br != nil {
 		l.br.exit(t, err == nil)
 	}
@@ -71,19 +82,19 @@ func (l *Limiter) eval(ctx context.Context, key string, cost int64, policy confi
 		return Result{}, err
 	}
 	if len(raw) != 3 {
-		return Result{}, fmt.Errorf("engine: unexpected lua result %#v", raw)
+		return Result{}, fmt.Errorf("%w: %#v", errBadResult, raw)
 	}
 	allowed, err := toInt(raw[0])
 	if err != nil {
-		return Result{}, err
+		return Result{}, fmt.Errorf("%w: %w", errBadResult, err)
 	}
 	remaining, err := toInt(raw[1])
 	if err != nil {
-		return Result{}, err
+		return Result{}, fmt.Errorf("%w: %w", errBadResult, err)
 	}
 	retry, err := toInt(raw[2])
 	if err != nil {
-		return Result{}, err
+		return Result{}, fmt.Errorf("%w: %w", errBadResult, err)
 	}
 	return Result{Allowed: allowed == 1, Remaining: remaining, RetryAfterMs: retry}, nil
 }

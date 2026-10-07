@@ -97,7 +97,7 @@ Approximate sliding window (previous window weighted by time remaining, plus cur
 - Admit if `used + cost <= limit`; then `HSET` and `PEXPIRE`.
 - Deny returns remaining and `retry_after_ms` as time left in the current window.
 
-Store errors become `engine.Result{StoreFailed: true}` plus allow or deny from `policy.Fail`. That flag is not on the gRPC response.
+Store errors become `engine.Result{StoreFailed: true}` plus allow or deny from `policy.Fail`. That flag is not on the gRPC response. A script reply that is not three integers is a checker error and does not open the breaker.
 
 ### Check gRPC
 
