@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -103,4 +104,100 @@ func TestFailModes(t *testing.T) {
 	if err != nil || r.Allowed || r.Remaining != 0 || r.RetryAfterMs != 0 || !r.StoreFailed {
 		t.Fatalf("closed: %+v %v", r, err)
 	}
+}
+
+// replyHook answers EVAL and EVALSHA without dialing.
+type replyHook struct {
+	val any
+}
+
+func (replyHook) DialHook(next redis.DialHook) redis.DialHook { return next }
+
+func (h replyHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		switch cmd.Name() {
+		case "eval", "evalsha":
+			c, ok := cmd.(*redis.Cmd)
+			if !ok {
+				return next(ctx, cmd)
+			}
+			c.SetVal(h.val)
+			return nil
+		default:
+			return next(ctx, cmd)
+		}
+	}
+}
+
+func (replyHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return next
+}
+
+func hookedLimiter(t *testing.T, val any) (*Limiter, *flips, *Breaker) {
+	t.Helper()
+	rdb := redis.NewClient(&redis.Options{Addr: "127.0.0.1:0"})
+	rdb.AddHook(replyHook{val: val})
+	t.Cleanup(func() { _ = rdb.Close() })
+	var f flips
+	b := NewBreaker(f.add)
+	return New(rdb).WithBreaker(b), &f, b
+}
+
+func TestBadResultDoesNotOpen(t *testing.T) {
+	cases := []struct {
+		name string
+		val  any
+	}{
+		{name: "short", val: []any{int64(1)}},
+		{name: "not int", val: []any{"1", int64(0), int64(0)}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			l, f, b := hookedLimiter(t, tc.val)
+			r, err := l.Check(context.Background(), "k", 1, pol(2, time.Minute, config.FailOpen))
+			if !errors.Is(err, errBadResult) || r.Allowed || r.StoreFailed || r.Remaining != 0 || r.RetryAfterMs != 0 {
+				t.Fatalf("%+v %v", r, err)
+			}
+			if stateOf(b) != closed {
+				t.Fatalf("state=%v", stateOf(b))
+			}
+			f.want(t)
+
+			r, err = l.Check(context.Background(), "k", 1, pol(2, time.Minute, config.FailOpen))
+			if !errors.Is(err, errBadResult) || r.Allowed || r.StoreFailed {
+				t.Fatalf("second: %+v %v", r, err)
+			}
+			if stateOf(b) != closed {
+				t.Fatalf("state=%v", stateOf(b))
+			}
+			f.want(t)
+		})
+	}
+}
+
+func TestBadResultLeavesHalfOpen(t *testing.T) {
+	l, f, b := hookedLimiter(t, []any{int64(1)})
+	trip(t, b)
+	b.nudge()
+	if stateOf(b) != halfOpen {
+		t.Fatalf("state=%v want halfOpen", stateOf(b))
+	}
+
+	r, err := l.Check(context.Background(), "k", 1, pol(2, time.Minute, config.FailOpen))
+	if !errors.Is(err, errBadResult) || r.Allowed || r.StoreFailed {
+		t.Fatalf("%+v %v", r, err)
+	}
+	if stateOf(b) != halfOpen {
+		t.Fatalf("state=%v want halfOpen", stateOf(b))
+	}
+	f.want(t, false)
+
+	r, err = l.Check(context.Background(), "k", 1, pol(2, time.Minute, config.FailOpen))
+	if !errors.Is(err, errBadResult) || r.Allowed || r.StoreFailed {
+		t.Fatalf("second probe: %+v %v", r, err)
+	}
+	if stateOf(b) != halfOpen {
+		t.Fatalf("state=%v want halfOpen", stateOf(b))
+	}
+	f.want(t, false)
 }
